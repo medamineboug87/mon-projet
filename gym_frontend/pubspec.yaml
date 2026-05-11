@@ -1,0 +1,49 @@
+name: gym_frontend
+description: Smart Gym - Application de gestion de salle de sport
+publish_to: none
+
+version: 1.0.0+1
+
+environment:
+  sdk: ^3.11.4
+
+dependencies:
+  flutter:
+    sdk: flutter
+
+  # UI
+  cupertino_icons: ^1.0.8
+  flutter_svg: ^2.0.9
+
+  # HTTP & State
+  http: ^1.2.1
+  flutter_riverpod: ^2.5.1
+  riverpod_annotation: ^2.3.5
+
+  # Storage
+  shared_preferences: ^2.2.3
+
+  # Auth
+  jwt_decoder: ^2.0.1
+
+  # Utils
+  logger: ^2.0.2
+  url_launcher: ^6.2.0
+
+  # NOTE:
+  # flutter_stripe SUPPRIMÉ (remplacé par Konnect)
+  # flutter_dotenv SUPPRIMÉ (les clés sont dans backend)
+  # hive_flutter SUPPRIMÉ (shared_preferences suffit)
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^6.0.0
+  build_runner: ^2.4.9
+  riverpod_generator: ^2.4.0
+
+flutter:
+  uses-material-design: true
+
+  assets:
+    - assets/icons/
