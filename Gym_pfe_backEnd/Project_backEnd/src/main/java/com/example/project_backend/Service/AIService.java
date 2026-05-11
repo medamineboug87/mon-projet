@@ -2,6 +2,7 @@ package com.example.project_backend.Service;
 
 import com.example.project_backend.Entity.Member;
 import com.example.project_backend.Entity.MemberProfile;
+import com.example.project_backend.Entity.SessionExercise;
 import com.example.project_backend.Entity.TrainingSession;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
@@ -17,7 +18,7 @@ import java.util.stream.Collectors;
 public class AIService {
 
     private final WebClient webClient;
-    private final MemberProfileService memberProfileService; // ← NIVEAU 3
+    private final MemberProfileService memberProfileService;
 
     private static final Duration AI_TIMEOUT = Duration.ofSeconds(10);
 
@@ -76,7 +77,28 @@ public class AIService {
             new String[]{"épaules",     "trapèzes"}
     );
 
-    // ── Constructeur — injection de MemberProfileService ──
+    // ── Seuils de charge par muscle (kg) pour normalisation du risque ──
+    // Représente une charge "élevée" pour chaque muscle
+    private static final Map<String, Double> MUSCLE_WEIGHT_THRESHOLD = new HashMap<>() {{
+        put("pectoraux",              80.0);   // développé couché
+        put("dorsaux",               80.0);   // tractions lestées / rowing
+        put("épaules",               30.0);   // développé militaire
+        put("biceps",                20.0);   // curl
+        put("biceps droit",          20.0);
+        put("triceps",               25.0);   // barre au front
+        put("triceps droit",         25.0);
+        put("abdominaux",            10.0);   // crunch lesté
+        put("quadriceps",            100.0);  // squat
+        put("quadriceps droit",      100.0);
+        put("ischio-jambiers",       80.0);   // soulevé de terre roumain
+        put("ischio-jambiers droits",80.0);
+        put("mollets",               60.0);   // mollets debout
+        put("mollets droits",        60.0);
+        put("fessiers",              80.0);   // hip thrust
+        put("lombaires",             100.0);  // soulevé de terre
+        put("trapèzes",              40.0);   // shrugs
+    }};
+
     public AIService(@Value("${ai.service.url}") String aiServiceUrl,
                      MemberProfileService memberProfileService) {
         this.webClient = WebClient.builder()
@@ -86,10 +108,98 @@ public class AIService {
     }
 
     // ═══════════════════════════════════════════════════════════════════
-    // CALCUL DU MUSCLE RISK SCORE
+    // NIVEAU 3 — CALCUL DU MUSCLE RISK SCORE BASÉ SUR LES EXERCICES RÉELS
     // ═══════════════════════════════════════════════════════════════════
 
-    private double calculateMuscleRiskScore(String targetMuscles) {
+    /**
+     * Calcule le MuscleRiskScore à partir des exercices détaillés de la séance.
+     *
+     * Si des SessionExercise sont présents (Niveau 3 — charge réelle par exercice),
+     * on utilise :
+     *   - La charge relative au seuil du muscle (weightKg / threshold)
+     *   - Le nombre de séries (volume)
+     *   - Le RPE déclaré (perception de l'effort)
+     *   - Le risque intrinsèque du muscle
+     *   - Le fait d'avoir atteint l'échec musculaire
+     *
+     * Si aucun exercice détaillé → fallback sur les muscles ciblés (targetMuscles).
+     */
+    private double calculateMuscleRiskScoreFromExercises(TrainingSession session) {
+        List<SessionExercise> exercises = session.getExercises();
+
+        // ── Fallback : pas d'exercices détaillés → utiliser targetMuscles ──
+        if (exercises == null || exercises.isEmpty()) {
+            return calculateMuscleRiskScoreFromTargetMuscles(session.getTargetMuscles());
+        }
+
+        double totalWeightedRisk = 0.0;
+        double totalWeight = 0.0;
+
+        for (SessionExercise ex : exercises) {
+            if (ex.getMuscleName() == null) continue;
+
+            String muscleLower = ex.getMuscleName().toLowerCase().trim();
+            double muscleBaseRisk = MUSCLE_RISK_MAP.getOrDefault(muscleLower, 1.5);
+
+            // ── Facteur 1 : charge relative au seuil du muscle ──
+            // Plus on est proche / au-dessus du seuil, plus le risque est élevé
+            double chargeRisk = 1.0;
+            if (ex.getWeightKg() != null && ex.getWeightKg() > 0) {
+                double threshold = MUSCLE_WEIGHT_THRESHOLD.getOrDefault(muscleLower, 50.0);
+                double chargeRatio = ex.getWeightKg() / threshold;
+                // Courbe non-linéaire : risque augmente plus vite au-delà du seuil
+                if (chargeRatio <= 0.5)       chargeRisk = 0.8;
+                else if (chargeRatio <= 0.75) chargeRisk = 1.0;
+                else if (chargeRatio <= 1.0)  chargeRisk = 1.2;
+                else if (chargeRatio <= 1.25) chargeRisk = 1.5;
+                else                          chargeRisk = 1.8;
+            }
+
+            // ── Facteur 2 : volume (séries × reps implicites) ──
+            double volumeRisk = 1.0;
+            if (ex.getSetsCompleted() != null) {
+                int sets = ex.getSetsCompleted();
+                if (sets >= 6)      volumeRisk = 1.3;
+                else if (sets >= 4) volumeRisk = 1.1;
+                else if (sets <= 1) volumeRisk = 0.9;
+            }
+
+            // ── Facteur 3 : RPE (perception de l'effort, 1-10) ──
+            double rpeRisk = 1.0;
+            if (ex.getRpe() != null) {
+                int rpe = ex.getRpe();
+                if (rpe >= 9)      rpeRisk = 1.4;
+                else if (rpe >= 7) rpeRisk = 1.2;
+                else if (rpe >= 5) rpeRisk = 1.0;
+                else               rpeRisk = 0.9;
+            }
+
+            // ── Facteur 4 : échec musculaire ──
+            double failureRisk = (ex.getFailureReached() != null && ex.getFailureReached()) ? 1.3 : 1.0;
+
+            // ── Score composite pour cet exercice ──
+            double exerciseRisk = muscleBaseRisk * chargeRisk * volumeRisk * rpeRisk * failureRisk;
+
+            // Pondération par le volume total (plus le volume est élevé, plus cet exercice "pèse")
+            double exerciseVolume = ex.getTotalVolume() != null ? ex.getTotalVolume() : 1.0;
+            double weight = Math.max(1.0, exerciseVolume);
+
+            totalWeightedRisk += exerciseRisk * weight;
+            totalWeight += weight;
+        }
+
+        if (totalWeight == 0) return 1.5;
+
+        double avgRisk = totalWeightedRisk / totalWeight;
+        // Normaliser entre 1.0 et 3.0
+        return Math.min(3.0, Math.max(1.0, Math.round(avgRisk * 10.0) / 10.0));
+    }
+
+    /**
+     * Fallback : calcul du MuscleRiskScore depuis la liste de muscles ciblés (string).
+     * Utilisé quand aucun SessionExercise n'est disponible.
+     */
+    private double calculateMuscleRiskScoreFromTargetMuscles(String targetMuscles) {
         if (targetMuscles == null || targetMuscles.isBlank()) return 1.5;
         String[] muscles = targetMuscles.toLowerCase().split(",");
         double totalRisk = 0.0;
@@ -100,6 +210,60 @@ public class AIService {
         }
         if (count == 0) return 1.5;
         return Math.min(3.0, Math.max(1.0, Math.round((totalRisk / count) * 10.0) / 10.0));
+    }
+
+    /**
+     * Calcule le weightLifted effectif pour l'IA :
+     * - Si des exercices détaillés existent → charge max parmi eux
+     * - Sinon → weightLifted global de la séance
+     */
+    private double getEffectiveWeight(TrainingSession session) {
+        return session.getEffectiveWeightLifted();
+    }
+
+    /**
+     * Calcule le volume total réel de la séance pour l'analyse de surcharge :
+     * - Si des exercices détaillés existent → somme des volumes par exercice
+     * - Sinon → estimation basée sur durée × poids global
+     */
+    private double getEffectiveTotalVolume(TrainingSession session) {
+        return session.getTotalVolume();
+    }
+
+    /**
+     * Résumé des exercices pour les logs et la réponse enrichie.
+     * Retourne la liste des exercices avec leur risque calculé.
+     */
+    private List<Map<String, Object>> buildExerciseSummary(TrainingSession session) {
+        List<SessionExercise> exercises = session.getExercises();
+        if (exercises == null || exercises.isEmpty()) return Collections.emptyList();
+
+        return exercises.stream().map(ex -> {
+            Map<String, Object> m = new LinkedHashMap<>();
+            m.put("exerciseName",  ex.getExerciseName());
+            m.put("muscleName",    ex.getMuscleName());
+            m.put("weightKg",      ex.getWeightKg());
+            m.put("sets",          ex.getSetsCompleted());
+            m.put("reps",          ex.getRepsCompleted());
+            m.put("rpe",           ex.getRpe());
+            m.put("failureReached",ex.getFailureReached());
+            m.put("totalVolume",   ex.getTotalVolume());
+
+            // Calcul du niveau de charge relatif pour ce muscle
+            if (ex.getMuscleName() != null && ex.getWeightKg() != null && ex.getWeightKg() > 0) {
+                double threshold = MUSCLE_WEIGHT_THRESHOLD.getOrDefault(
+                        ex.getMuscleName().toLowerCase().trim(), 50.0);
+                double ratio = ex.getWeightKg() / threshold;
+                String chargeLevel;
+                if (ratio <= 0.5)       chargeLevel = "LÉGÈRE";
+                else if (ratio <= 0.75) chargeLevel = "MODÉRÉE";
+                else if (ratio <= 1.0)  chargeLevel = "ÉLEVÉE";
+                else                    chargeLevel = "TRÈS ÉLEVÉE";
+                m.put("chargeLevel", chargeLevel);
+                m.put("chargeRatio", Math.round(ratio * 100.0) / 100.0);
+            }
+            return m;
+        }).collect(Collectors.toList());
     }
 
     // ═══════════════════════════════════════════════════════════════════
@@ -126,12 +290,6 @@ public class AIService {
     // NIVEAU 2 — HELPERS painLevel / warmupDone
     // ═══════════════════════════════════════════════════════════════════
 
-    /**
-     * Calcule le multiplicateur d'intensité lié à la douleur ressentie.
-     * painLevel null ou 0 → multiplicateur 1.0 (aucun effet).
-     * painLevel 4-6 → +10%  (douleur modérée).
-     * painLevel ≥ 7 → +20%  (douleur intense).
-     */
     private double getPainIntensityMultiplier(Integer painLevel) {
         if (painLevel == null || painLevel == 0) return 1.0;
         if (painLevel >= 7) return 1.20;
@@ -139,12 +297,6 @@ public class AIService {
         return 1.0;
     }
 
-    /**
-     * Calcule le multiplicateur de risque musculaire lié à la douleur.
-     * painLevel null ou 0 → 1.0.
-     * painLevel 4-6 → ×1.15.
-     * painLevel ≥ 7 → ×1.30.
-     */
     private double getPainRiskMultiplier(Integer painLevel) {
         if (painLevel == null || painLevel == 0) return 1.0;
         if (painLevel >= 7) return 1.30;
@@ -152,10 +304,6 @@ public class AIService {
         return 1.0;
     }
 
-    /**
-     * Multiplicateur d'intensité lié à l'absence d'échauffement.
-     * warmupDone false → +15% sur l'intensité perçue.
-     */
     private double getWarmupIntensityMultiplier(Boolean warmupDone) {
         return (warmupDone != null && !warmupDone) ? 1.15 : 1.0;
     }
@@ -193,7 +341,8 @@ public class AIService {
     }
 
     // ═══════════════════════════════════════════════════════════════════
-    // PROBLÈME #8 : Progression trop rapide des charges
+    // PROBLÈME #8 : Progression des charges
+    // Utilise désormais la charge effective (exercices réels si disponibles)
     // ═══════════════════════════════════════════════════════════════════
 
     private Double calculateWeightProgressionPercent(
@@ -203,7 +352,7 @@ public class AIService {
 
         double avgPrevious = previousSessions.stream()
                 .limit(4)
-                .mapToDouble(TrainingSession::getWeightLifted)
+                .mapToDouble(s -> getEffectiveWeight(s))
                 .average()
                 .orElse(0.0);
 
@@ -282,7 +431,7 @@ public class AIService {
     }
 
     // ═══════════════════════════════════════════════════════════════════
-    // ANALYSE DE SURCHARGE — Niveau 1 + Niveau 2
+    // ANALYSE DE SURCHARGE — Intègre les exercices réels (Niveau 3)
     // ═══════════════════════════════════════════════════════════════════
 
     public Map<String, Object> analyzeOverload(Member member, List<TrainingSession> sessions) {
@@ -301,12 +450,10 @@ public class AIService {
             return analysis;
         }
 
-        // ── Données de base semaine ──
         int sessionCount = sessions.size();
         int totalMinutes = sessions.stream().mapToInt(TrainingSession::getDuration).sum();
         int totalCardio  = sessions.stream().mapToInt(TrainingSession::getCardioDurationMinutes).sum();
 
-        // ── Expérience ──
         int totalSessionCount = sessions.size();
         double expRiskMult = getExperienceRiskMultiplier(totalSessionCount);
         String experienceLevel;
@@ -352,20 +499,48 @@ public class AIService {
                     .collect(Collectors.toList()));
         }
 
-        // ── Progression des charges ──
-        Double weightProgressPct = calculateWeightProgressionPercent(
-                lastSession.getWeightLifted(), previousSessions);
+        // ── NIVEAU 3 — Progression des charges basée sur la charge réelle ──
+        double effectiveWeight = getEffectiveWeight(lastSession);
+        Double weightProgressPct = calculateWeightProgressionPercent(effectiveWeight, previousSessions);
+        boolean usedRealExercises = lastSession.getExercises() != null && !lastSession.getExercises().isEmpty();
 
         if (weightProgressPct != null) {
             analysis.put("weightProgressionPercent", Math.round(weightProgressPct * 10.0) / 10.0);
+            analysis.put("weightProgressionBasedOnRealExercises", usedRealExercises);
             if (weightProgressPct > 15.0) {
                 warnings.add("⚠️ Augmentation des charges trop rapide : +"
-                        + Math.round(weightProgressPct) + "% vs séances précédentes (max recommandé : +10%)");
+                        + Math.round(weightProgressPct) + "% vs séances précédentes (max recommandé : +10%)"
+                        + (usedRealExercises ? " [calculé sur charges réelles]" : ""));
                 recommendations.add("💡 Réduisez les charges de " + Math.round(weightProgressPct - 10) + "% pour limiter le risque de blessure.");
             } else if (weightProgressPct > 0) {
                 analysis.put("weightProgressionStatus", "OK (" + Math.round(weightProgressPct) + "% d'augmentation)");
             }
         }
+
+        // ── NIVEAU 3 — Résumé des exercices réels ──
+        List<Map<String, Object>> exerciseSummary = buildExerciseSummary(lastSession);
+        if (!exerciseSummary.isEmpty()) {
+            analysis.put("exerciseDetails", exerciseSummary);
+            analysis.put("exerciseBasedAnalysis", true);
+
+            // Alertes spécifiques par exercice
+            exerciseSummary.stream()
+                    .filter(e -> "TRÈS ÉLEVÉE".equals(e.get("chargeLevel")))
+                    .forEach(e -> warnings.add("⚠️ Charge très élevée sur " + e.get("exerciseName")
+                            + " (" + e.get("weightKg") + "kg) — technique irréprochable exigée"));
+
+            exerciseSummary.stream()
+                    .filter(e -> Boolean.TRUE.equals(e.get("failureReached")))
+                    .forEach(e -> warnings.add("⚠️ Échec musculaire atteint sur " + e.get("exerciseName")
+                            + " — récupération accrue nécessaire"));
+        } else {
+            analysis.put("exerciseBasedAnalysis", false);
+            analysis.put("exerciseAnalysisNote", "Aucun exercice détaillé enregistré — saisissez vos exercices pour une analyse plus précise");
+        }
+
+        // ── Volume total réel ──
+        double totalVolume = getEffectiveTotalVolume(lastSession);
+        analysis.put("totalVolumeSessions", Math.round(totalVolume));
 
         // ── Déséquilibres musculaires ──
         List<String> imbalances = detectMuscleImbalances(sessions);
@@ -375,10 +550,7 @@ public class AIService {
         }
         analysis.put("muscleImbalances", imbalances);
 
-        // ════════════════════════════════════════════════════════════
-        // NIVEAU 2 — Intégration painLevel et warmupDone
-        // ════════════════════════════════════════════════════════════
-
+        // ── NIVEAU 2 — Intégration painLevel et warmupDone ──
         Integer painLevel  = lastSession.getPainLevel();
         Boolean warmupDone = lastSession.getWarmupDone();
         int painWarmupScoreBonus = 0;
@@ -408,12 +580,18 @@ public class AIService {
         analysis.put("warmupDone", warmupDone != null ? warmupDone : true);
 
         // ── Calcul du niveau de risque global ──
+        // NOUVEAU : le MuscleRiskScore est désormais calculé depuis les exercices réels
+        double muscleRiskScore = calculateMuscleRiskScoreFromExercises(lastSession);
+        analysis.put("muscleRiskScore", muscleRiskScore);
+        analysis.put("muscleRiskSource", usedRealExercises ? "EXERCICES_RÉELS" : "MUSCLES_CIBLÉS");
+
         String riskLevel = computeRiskLevel(
                 sessionCount, totalMinutes, totalCardio,
                 expRiskMult, !highRiskMuscles.isEmpty(),
                 !unrecovered.isEmpty(), weightProgressPct,
                 !imbalances.isEmpty(),
-                painWarmupScoreBonus);
+                painWarmupScoreBonus,
+                muscleRiskScore);
 
         addGeneralRecommendations(recommendations, riskLevel, sessionCount,
                 totalMinutes, experienceLevel, unrecovered, highRiskMuscles);
@@ -431,13 +609,14 @@ public class AIService {
         return analysis;
     }
 
-    // ── Calcul du score de risque global ──
+    // ── Calcul du score de risque global — intègre maintenant le MuscleRiskScore réel ──
     private String computeRiskLevel(
             int sessionCount, int totalMinutes, int totalCardio,
             double expRiskMult, boolean hasHighRiskMuscles,
             boolean hasUnrecovered, Double weightProgPct,
             boolean hasImbalances,
-            int painWarmupScoreBonus) {
+            int painWarmupScoreBonus,
+            double muscleRiskScore) {
 
         int score = 0;
 
@@ -462,6 +641,10 @@ public class AIService {
         if (hasImbalances) score += 1;
 
         score += painWarmupScoreBonus;
+
+        // NOUVEAU : intégration du MuscleRiskScore réel basé sur les exercices
+        if (muscleRiskScore >= 2.5)      score += 2;
+        else if (muscleRiskScore >= 2.0) score += 1;
 
         if (score >= 8) return "CRITIQUE";
         if (score >= 5) return "ÉLEVÉ";
@@ -498,7 +681,7 @@ public class AIService {
     }
 
     // ═══════════════════════════════════════════════════════════════════
-    // PRÉDICTION FATIGUE — Niveau 1 + 2 + 3 (MemberProfile)
+    // PRÉDICTION FATIGUE — Utilise les exercices réels (Niveau 3)
     // ═══════════════════════════════════════════════════════════════════
 
     public Map<String, Object> predictFatigue(Member member, List<TrainingSession> sessions) {
@@ -514,11 +697,28 @@ public class AIService {
             bmi = Math.round(bmi * 10.0) / 10.0;
             int gender = "MALE".equalsIgnoreCase(member.getGender()) ? 1 : 0;
 
-            double muscleRiskScore = calculateMuscleRiskScore(lastSession.getTargetMuscles());
+            // NOUVEAU : MuscleRiskScore basé sur les exercices réels
+            double muscleRiskScore = calculateMuscleRiskScoreFromExercises(lastSession);
+            boolean usedRealExercises = lastSession.getExercises() != null && !lastSession.getExercises().isEmpty();
 
-            // Niveau 1 : multiplicateur expérience
             double expMultiplier = getExperienceRiskMultiplier(sessions.size());
             double adjustedIntensity = Math.min(10.0, lastSession.getIntensity() * expMultiplier);
+
+            // NOUVEAU : si des exercices réels sont disponibles, ajuster l'intensité
+            // selon le RPE moyen déclaré sur les exercices
+            if (usedRealExercises) {
+                OptionalDouble avgRpe = lastSession.getExercises().stream()
+                        .filter(e -> e.getRpe() != null)
+                        .mapToInt(SessionExercise::getRpe)
+                        .average();
+                if (avgRpe.isPresent()) {
+                    // RPE sur 10 → normaliser pour influencer l'intensité perçue
+                    double rpeInfluence = avgRpe.getAsDouble() / 10.0;
+                    // Mélange 50/50 entre l'intensité déclarée et le RPE moyen
+                    adjustedIntensity = Math.min(10.0,
+                            ((adjustedIntensity + avgRpe.getAsDouble()) / 2.0) * expMultiplier);
+                }
+            }
 
             // Niveau 2 : ajustements painLevel et warmupDone
             Integer painLevel  = lastSession.getPainLevel();
@@ -532,9 +732,7 @@ public class AIService {
             boolean hasHighPain           = painLevel != null && painLevel >= 7;
             boolean painAdjustmentApplied = painIntensityMult != 1.0 || warmupIntensityMult != 1.0;
 
-            // ════════════════════════════════════════════════════════
-            // NIVEAU 3 — Intégration MemberProfile dans predictFatigue
-            // ════════════════════════════════════════════════════════
+            // Niveau 3 — MemberProfile
             double profileIntensityMult = 1.0;
             boolean profileApplied = false;
             String profileGoal = null;
@@ -542,32 +740,27 @@ public class AIService {
             Optional<MemberProfile> profileOpt = memberProfileService.getProfile(member.getId());
             if (profileOpt.isPresent()) {
                 MemberProfile profile = profileOpt.get();
-
-                // Multiplicateur objectif : performance/muscleGain = effort accru = plus de fatigue
-                double goalMult = memberProfileService.goalRiskMultiplier(profile.getPrimaryGoal());
-
-                // Multiplicateur récupération : mauvais sommeil + stress élevé = récupération ralentie
+                double goalMult     = memberProfileService.goalRiskMultiplier(profile.getPrimaryGoal());
                 double recoveryMult = memberProfileService.recoveryMultiplier(profile);
-
-                // Appliquer sur l'intensité perçue (cap à 10)
                 profileIntensityMult = Math.min(2.0, goalMult * recoveryMult);
                 adjustedIntensity = Math.min(10.0, adjustedIntensity * profileIntensityMult);
-
                 profileApplied = true;
                 profileGoal = profile.getPrimaryGoal() != null ? profile.getPrimaryGoal().name() : null;
             }
 
+            // NOUVEAU : utiliser le volume total réel
+            double effectiveWeight = getEffectiveWeight(lastSession);
             double totalDuration = lastSession.getDuration() + lastSession.getCardioDurationMinutes();
 
             Map<String, Object> body = new HashMap<>();
             body.put("age",                   age);
             body.put("bmi",                   bmi);
             body.put("gender",                gender);
-            body.put("muscleRiskScore",        muscleRiskScore);
+            body.put("muscleRiskScore",        muscleRiskScore); // ← basé sur exercices réels
             body.put("duration",              (double) lastSession.getDuration());
             body.put("totalDuration",          totalDuration);
-            body.put("weightLifted",           lastSession.getWeightLifted());
-            body.put("intensity",              adjustedIntensity); // ← exp + pain + warmup + profil
+            body.put("weightLifted",           effectiveWeight); // ← charge effective réelle
+            body.put("intensity",              adjustedIntensity);
             body.put("recoveryDaysPerWeek",    lastSession.getRecoveryDaysPerWeek() != null
                     ? lastSession.getRecoveryDaysPerWeek() : 2);
             body.put("hasCardio",             lastSession.getHasCardio() ? 1 : 0);
@@ -584,7 +777,6 @@ public class AIService {
 
             if (result == null) return fatigueFallback();
 
-            // ── Champs contextuels retournés au front ──
             result.put("hasCardio",             lastSession.getHasCardio());
             result.put("adjustedIntensity",     Math.round(adjustedIntensity * 10.0) / 10.0);
             result.put("experienceMultiplier",  expMultiplier);
@@ -599,6 +791,11 @@ public class AIService {
             result.put("profileApplied",        profileApplied);
             result.put("profileGoal",           profileGoal);
             result.put("profileIntensityMult",  Math.round(profileIntensityMult * 100.0) / 100.0);
+            // NOUVEAU : informations sur les exercices réels
+            result.put("muscleRiskScore",        Math.round(muscleRiskScore * 100.0) / 100.0);
+            result.put("muscleRiskSource",       usedRealExercises ? "EXERCICES_RÉELS" : "MUSCLES_CIBLÉS");
+            result.put("effectiveWeightUsed",    Math.round(effectiveWeight * 10.0) / 10.0);
+            result.put("exerciseCount",          usedRealExercises ? lastSession.getExercises().size() : 0);
 
             return result;
 
@@ -611,7 +808,7 @@ public class AIService {
     }
 
     // ═══════════════════════════════════════════════════════════════════
-    // PRÉDICTION BLESSURE — Niveau 1 + 2 + 3 (MemberProfile)
+    // PRÉDICTION BLESSURE — Utilise les exercices réels (Niveau 3)
     // ═══════════════════════════════════════════════════════════════════
 
     public Map<String, Object> predictInjury(Member member, List<TrainingSession> sessions) {
@@ -639,25 +836,49 @@ public class AIService {
                     .mapToDouble(s -> s.getAclRiskScore()     != null ? s.getAclRiskScore()     : 3.0)
                     .average().orElse(3.0);
 
-            double muscleRiskScore = calculateMuscleRiskScore(lastSession.getTargetMuscles());
+            // NOUVEAU : MuscleRiskScore basé sur les exercices réels de la dernière séance
+            double muscleRiskScore = calculateMuscleRiskScoreFromExercises(lastSession);
+            boolean usedRealExercises = lastSession.getExercises() != null && !lastSession.getExercises().isEmpty();
+
             double sessionsPerWeek = sessions.size();
 
             int    gender = "MALE".equalsIgnoreCase(member.getGender()) ? 1 : 0;
             double bmi    = member.getWeight() / Math.pow(member.getHeight() / 100.0, 2);
             bmi = Math.round(bmi * 10.0) / 10.0;
 
-            // Niveau 1 : multiplicateur expérience
             double expMult = getExperienceRiskMultiplier(sessions.size());
             double adjustedMuscleRisk = Math.min(3.0, muscleRiskScore * expMult);
 
-            // Niveau 1 : progression charges
-            Double weightProg = calculateWeightProgressionPercent(lastSession.getWeightLifted(), prevSessions);
-            double weightRiskAdj = lastSession.getWeightLifted();
+            // NOUVEAU : progression basée sur la charge effective réelle
+            double effectiveWeight = getEffectiveWeight(lastSession);
+            Double weightProg = calculateWeightProgressionPercent(effectiveWeight, prevSessions);
+            double weightRiskAdj = effectiveWeight; // charge réelle
             if (weightProg != null && weightProg > 10) {
                 weightRiskAdj *= (1 + (weightProg - 10) / 100.0);
             }
 
-            // Niveau 2 : multiplicateurs painLevel et warmupDone
+            // NOUVEAU : si des exercices avec échec musculaire existent, augmenter le risque
+            if (usedRealExercises) {
+                long failureCount = lastSession.getExercises().stream()
+                        .filter(e -> Boolean.TRUE.equals(e.getFailureReached()))
+                        .count();
+                if (failureCount >= 2) {
+                    adjustedMuscleRisk = Math.min(3.0, adjustedMuscleRisk * 1.15);
+                } else if (failureCount == 1) {
+                    adjustedMuscleRisk = Math.min(3.0, adjustedMuscleRisk * 1.05);
+                }
+
+                // RPE moyen élevé → risque accru
+                OptionalDouble avgRpe = lastSession.getExercises().stream()
+                        .filter(e -> e.getRpe() != null)
+                        .mapToInt(SessionExercise::getRpe)
+                        .average();
+                if (avgRpe.isPresent() && avgRpe.getAsDouble() >= 8.5) {
+                    adjustedMuscleRisk = Math.min(3.0, adjustedMuscleRisk * 1.1);
+                }
+            }
+
+            // Niveau 2
             Integer painLevel  = lastSession.getPainLevel();
             Boolean warmupDone = lastSession.getWarmupDone();
 
@@ -668,9 +889,7 @@ public class AIService {
 
             boolean hasHighPain = painLevel != null && painLevel >= 7;
 
-            // ════════════════════════════════════════════════════════
-            // NIVEAU 3 — Intégration MemberProfile dans predictInjury
-            // ════════════════════════════════════════════════════════
+            // Niveau 3 — MemberProfile
             double profileRiskMult = 1.0;
             boolean profileApplied = false;
             String profileGoal = null;
@@ -679,24 +898,14 @@ public class AIService {
             Optional<MemberProfile> profileOpt = memberProfileService.getProfile(member.getId());
             if (profileOpt.isPresent()) {
                 MemberProfile profile = profileOpt.get();
-
-                // Multiplicateur douleurs chroniques : zones douloureuses = risque accru de blessure
-                double chronicMult = memberProfileService.chronicPainRiskMultiplier(profile);
-
-                // Multiplicateur objectif : performance = plus de risque
-                double goalMult = memberProfileService.goalRiskMultiplier(profile.getPrimaryGoal());
-
-                // Multiplicateur récupération : mauvais sommeil / stress = moins bonne récupération
+                double chronicMult  = memberProfileService.chronicPainRiskMultiplier(profile);
+                double goalMult     = memberProfileService.goalRiskMultiplier(profile.getPrimaryGoal());
                 double recoveryMult = memberProfileService.recoveryMultiplier(profile);
-
-                // Combiner sur adjustedMuscleRisk (cap à 3.0)
                 profileRiskMult = Math.min(2.0, chronicMult * goalMult * recoveryMult);
                 adjustedMuscleRisk = Math.min(3.0, adjustedMuscleRisk * profileRiskMult);
-
                 profileApplied = true;
                 profileGoal = profile.getPrimaryGoal() != null ? profile.getPrimaryGoal().name() : null;
 
-                // Alertes blessures actuelles et zones chroniques
                 if (profile.getCurrentInjuries() != null && !profile.getCurrentInjuries().isBlank()) {
                     profileAlerts.add("🔴 Blessure actuelle : " + profile.getCurrentInjuries());
                 }
@@ -718,12 +927,12 @@ public class AIService {
             body.put("fatigueScore",           avgFatigueScore);
             body.put("loadBalanceScore",       avgLoadBalance);
             body.put("aclRiskScore",           avgAclRisk);
-            body.put("weightLifted",           weightRiskAdj);
+            body.put("weightLifted",           weightRiskAdj); // ← charge effective ajustée
             body.put("sessionsPerWeek",        sessionsPerWeek);
             body.put("hasCardio",             lastSession.getHasCardio() ? 1 : 0);
             body.put("cardioDuration",        (double) lastSession.getCardioDurationMinutes());
             body.put("cardioIntensity",       (double) lastSession.getCardioIntensity());
-            body.put("muscleRiskScore",        adjustedMuscleRisk); // ← exp + pain + warmup + profil
+            body.put("muscleRiskScore",        adjustedMuscleRisk); // ← basé sur exercices réels
             body.put("Gender",                 gender);
             body.put("BMI",                    bmi);
 
@@ -737,19 +946,20 @@ public class AIService {
 
             if (result == null) return injuryFallback();
 
-            // ── Champs contextuels retournés au front ──
-            // Niveau 2
             result.put("painLevel",           painLevel  != null ? painLevel  : 0);
             result.put("warmupDone",          warmupDone != null ? warmupDone : true);
             result.put("hasHighPain",         hasHighPain);
             result.put("painRiskMult",        Math.round(painRiskMult   * 100.0) / 100.0);
             result.put("warmupRiskMult",      Math.round(warmupRiskMult * 100.0) / 100.0);
             result.put("adjustedMuscleRisk",  Math.round(adjustedMuscleRisk * 100.0) / 100.0);
-            // Niveau 3
             result.put("profileApplied",      profileApplied);
             result.put("profileGoal",         profileGoal);
             result.put("profileRiskMult",     Math.round(profileRiskMult * 100.0) / 100.0);
             result.put("profileAlerts",       profileAlerts);
+            // NOUVEAU : informations sur les exercices réels
+            result.put("muscleRiskSource",    usedRealExercises ? "EXERCICES_RÉELS" : "MUSCLES_CIBLÉS");
+            result.put("effectiveWeightUsed", Math.round(effectiveWeight * 10.0) / 10.0);
+            result.put("exerciseCount",       usedRealExercises ? lastSession.getExercises().size() : 0);
 
             return result;
 
