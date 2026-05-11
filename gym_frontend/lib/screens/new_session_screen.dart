@@ -1,5 +1,9 @@
+import 'dart:convert';
 import 'package:flutter/material.dart';
+import 'package:http/http.dart' as http;
 import '../services/member_service.dart';
+import '../services/auth_service.dart';
+import '../config/api_config.dart';
 import 'exercise_screen_updated.dart';
 import '../widgets/index.dart';
 
@@ -22,8 +26,94 @@ const Color _kText = Color(0xFF1A2340);
 const Color _kTextSub = Color(0xFF6B7A99);
 const Color _kBorder = Color(0xFFDDE2EE);
 
-// ─────────────────────────────────────────────
-// DESIGN TOKENS
+// ─── Modèle d'exercice saisi par le membre ───
+class _ExerciseEntry {
+  String exerciseName;
+  String muscleName;
+  double weightKg;
+  int setsCompleted;
+  String repsCompleted;
+  int? rpe;
+  bool failureReached;
+  int restSeconds;
+  String notes;
+
+  _ExerciseEntry({
+    this.exerciseName = '',
+    this.muscleName = '',
+    this.weightKg = 0.0,
+    this.setsCompleted = 3,
+    this.repsCompleted = '10',
+    this.rpe,
+    this.failureReached = false,
+    this.restSeconds = 90,
+    this.notes = '',
+  });
+
+  Map<String, dynamic> toJson() => {
+    'exerciseName': exerciseName,
+    'muscleName': muscleName,
+    'weightKg': weightKg,
+    'setsCompleted': setsCompleted,
+    'repsCompleted': repsCompleted,
+    'rpe': rpe,
+    'failureReached': failureReached,
+    'restSeconds': restSeconds,
+    'notes': notes.isNotEmpty ? notes : null,
+  };
+
+  double get totalVolume =>
+      weightKg *
+      setsCompleted *
+      (double.tryParse(repsCompleted.split(RegExp(r'[-,]'))[0]) ?? 10);
+
+  String get chargeLevel {
+    // Seuils simplifiés pour affichage
+    if (weightKg == 0) return 'N/A';
+    if (weightKg < 20) return 'Légère';
+    if (weightKg < 50) return 'Modérée';
+    if (weightKg < 80) return 'Élevée';
+    return 'Très élevée';
+  }
+
+  Color get chargeLevelColor {
+    switch (chargeLevel) {
+      case 'Légère':
+        return _kGreen;
+      case 'Modérée':
+        return _kBlue;
+      case 'Élevée':
+        return _kOrange;
+      case 'Très élevée':
+        return _kRed;
+      default:
+        return _kTextSub;
+    }
+  }
+
+  bool get isValid => exerciseName.trim().isNotEmpty;
+}
+
+// ─── Noms de muscles disponibles ───
+const List<String> _kMuscleOptions = [
+  'Pectoraux',
+  'Dorsaux',
+  'Épaules',
+  'Biceps',
+  'Biceps droit',
+  'Triceps',
+  'Triceps droit',
+  'Abdominaux',
+  'Quadriceps',
+  'Quadriceps droit',
+  'Ischio-jambiers',
+  'Ischio-jambiers droits',
+  'Fessiers',
+  'Mollets',
+  'Mollets droits',
+  'Lombaires',
+  'Trapèzes',
+];
 
 class NewSessionScreen extends StatefulWidget {
   final int memberId;
@@ -53,8 +143,12 @@ class _NewSessionScreenState extends State<NewSessionScreen>
   int _cardioIntensity = 5;
 
   // ── Ressenti post-séance (Niveau 2 IA) ──
-  int _painLevel = 0; // 0-10 : 0=aucune douleur, 10=très intense
-  bool _warmupDone = true; // échauffement effectué avant la séance
+  int _painLevel = 0;
+  bool _warmupDone = true;
+
+  // ── NOUVEAU : Exercices avec poids réel (Niveau 3 IA) ──
+  bool _useDetailedExercises = false;
+  List<_ExerciseEntry> _exercises = [];
 
   static const List<String> _cardioTypes = [
     'Course',
@@ -89,7 +183,6 @@ class _NewSessionScreenState extends State<NewSessionScreen>
     'Corde': _kRed,
   };
 
-  // ── Muscle zones ──
   static const _svgW = 350.0;
   static const _svgH = 520.0;
 
@@ -128,12 +221,49 @@ class _NewSessionScreenState extends State<NewSessionScreen>
   }
 
   // ─────────────────────────────────────────────
+  // Ajouter un exercice depuis les muscles sélectionnés
+  // ─────────────────────────────────────────────
+  void _addExercise({String? muscleName}) {
+    setState(() {
+      _exercises.add(
+        _ExerciseEntry(
+          muscleName:
+              muscleName ??
+              (_selectedMuscles.isNotEmpty ? _selectedMuscles.first : ''),
+        ),
+      );
+    });
+  }
+
+  void _removeExercise(int index) {
+    setState(() => _exercises.removeAt(index));
+  }
+
+  // Calcul du poids effectif maximal parmi les exercices
+  double get _effectiveWeightFromExercises {
+    if (_exercises.isEmpty) return 0;
+    return _exercises.map((e) => e.weightKg).reduce((a, b) => a > b ? a : b);
+  }
+
+  // Extraction des muscles depuis les exercices
+  Set<String> get _musclesFromExercises {
+    return _exercises
+        .where((e) => e.muscleName.isNotEmpty)
+        .map((e) => e.muscleName)
+        .toSet();
+  }
+
+  // ─────────────────────────────────────────────
   // SUBMIT
   // ─────────────────────────────────────────────
-
   Future<void> _submitSession() async {
     if (!_formKey.currentState!.validate()) return;
-    if (_selectedMuscles.isEmpty && !_hasCardio) {
+
+    final musclesUsed = _useDetailedExercises
+        ? _musclesFromExercises
+        : _selectedMuscles;
+
+    if (musclesUsed.isEmpty && !_hasCardio) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text(
@@ -145,22 +275,51 @@ class _NewSessionScreenState extends State<NewSessionScreen>
       return;
     }
 
+    if (_useDetailedExercises && _exercises.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            'Ajoutez au moins un exercice ou désactivez la saisie détaillée.',
+          ),
+          backgroundColor: Colors.orange,
+        ),
+      );
+      return;
+    }
+
+    if (_useDetailedExercises && _exercises.any((e) => !e.isValid)) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Tous les exercices doivent avoir un nom.'),
+          backgroundColor: Colors.orange,
+        ),
+      );
+      return;
+    }
+
     setState(() => _isLoading = true);
 
     final cardioDur = _hasCardio ? (int.tryParse(_cardioDurCtrl.text) ?? 0) : 0;
+
+    // Calculer le poids global : depuis les exercices détaillés ou le champ manuel
+    final double globalWeight = _useDetailedExercises && _exercises.isNotEmpty
+        ? _effectiveWeightFromExercises
+        : (double.tryParse(_weightCtrl.text) ?? 0.0);
+
+    final targetMuscles = _useDetailedExercises
+        ? _musclesFromExercises.join(', ')
+        : _selectedMuscles.join(', ');
 
     final sessionData = {
       "date": DateTime.now().toIso8601String().split('T')[0],
       "duration": int.tryParse(_durationCtrl.text) ?? 0,
       "intensity": 5,
-      "weightLifted": double.tryParse(_weightCtrl.text) ?? 0.0,
-      "targetMuscles": _selectedMuscles.join(', '),
-      // ── Cardio fields ──
+      "weightLifted": globalWeight,
+      "targetMuscles": targetMuscles,
       "hasCardio": _hasCardio,
       "cardioDurationMinutes": cardioDur,
       "cardioType": _hasCardio ? _cardioType : "",
       "cardioIntensity": _hasCardio ? _cardioIntensity : 0,
-      // ── Ressenti post-séance (Niveau 2 IA) ──
       "painLevel": _painLevel,
       "warmupDone": _warmupDone,
     };
@@ -172,7 +331,13 @@ class _NewSessionScreenState extends State<NewSessionScreen>
       );
 
       if (result['success'] == true) {
-        final sessionId = result['session']['id'];
+        final sessionId = result['session']['id'] as int;
+
+        // ── NIVEAU 3 : Envoyer les exercices détaillés si activé ──
+        if (_useDetailedExercises && _exercises.isNotEmpty) {
+          await _saveDetailedExercises(sessionId);
+        }
+
         final prediction = await MemberService.getAIPrediction(
           widget.memberId,
           sessionId,
@@ -184,7 +349,7 @@ class _NewSessionScreenState extends State<NewSessionScreen>
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(
-              content: Text('Séance enregistrée !'),
+              content: Text('Séance enregistrée avec exercices détaillés !'),
               backgroundColor: _kGreen,
             ),
           );
@@ -213,10 +378,44 @@ class _NewSessionScreenState extends State<NewSessionScreen>
     }
   }
 
+  // Envoi bulk des exercices au backend
+  Future<void> _saveDetailedExercises(int sessionId) async {
+    try {
+      final token = await AuthService.getToken();
+      final exercisesJson = _exercises
+          .asMap()
+          .entries
+          .map((e) => {...e.value.toJson(), 'exerciseOrder': e.key + 1})
+          .toList();
+
+      final response = await http
+          .post(
+            Uri.parse(
+              '${ApiConfig.baseUrl}/sessions/$sessionId/exercises/bulk',
+            ),
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': 'Bearer $token',
+            },
+            body: jsonEncode(exercisesJson),
+          )
+          .timeout(const Duration(seconds: 15));
+
+      if (response.statusCode != 200) {
+        debugPrint('⚠️ Erreur sauvegarde exercices: ${response.body}');
+      } else {
+        debugPrint(
+          '✅ ${_exercises.length} exercices sauvegardés pour la séance $sessionId',
+        );
+      }
+    } catch (e) {
+      debugPrint('❌ Erreur réseau exercices: $e');
+    }
+  }
+
   // ─────────────────────────────────────────────
   // BUILD
   // ─────────────────────────────────────────────
-
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -244,242 +443,40 @@ class _NewSessionScreenState extends State<NewSessionScreen>
               Icons.timer_rounded,
               isNumber: true,
             ),
-            const SizedBox(height: 14),
-
-            // ── Poids ──
-            _SectionTitle('🏋 Poids soulevé (kg)', _kBlue),
-            const SizedBox(height: 8),
-            _buildField(
-              _weightCtrl,
-              'Poids total soulevé',
-              Icons.fitness_center_rounded,
-              isNumber: true,
-            ),
             const SizedBox(height: 20),
 
-            // ═══════════════════════════════════════
-            // CARDIO SECTION
-            // ═══════════════════════════════════════
+            // ══════════════════════════════════════════════
+            // NOUVEAU : TOGGLE SAISIE EXERCICES DÉTAILLÉS
+            // ══════════════════════════════════════════════
+            _buildExercisesModeToggle(),
+            const SizedBox(height: 16),
+
+            // ── Si mode détaillé : section exercices ──
+            if (_useDetailedExercises) ...[
+              _buildDetailedExercisesSection(),
+              const SizedBox(height: 16),
+            ] else ...[
+              // ── Mode simple : champ poids global ──
+              _SectionTitle('🏋 Poids soulevé (kg)', _kBlue),
+              const SizedBox(height: 8),
+              _buildField(
+                _weightCtrl,
+                'Poids total soulevé',
+                Icons.fitness_center_rounded,
+                isNumber: true,
+              ),
+              const SizedBox(height: 20),
+
+              // ── Body Map (mode simple uniquement) ──
+              _buildBodyMapSection(),
+              const SizedBox(height: 20),
+            ],
+
+            // ── Cardio ──
             _buildCardioSection(),
             const SizedBox(height: 20),
 
-            // ═══════════════════════════════════════
-            // BODY MAP
-            // ═══════════════════════════════════════
-            _SectionTitle('💪 Muscles ciblés', _kOrange),
-            const SizedBox(height: 4),
-            const Text(
-              'Appuyez sur un muscle pour le sélectionner',
-              style: TextStyle(color: _kTextSub, fontSize: 11),
-            ),
-            const SizedBox(height: 12),
-
-            // Toggle avant/arrière
-            Container(
-              decoration: BoxDecoration(
-                color: _kSurf2,
-                borderRadius: BorderRadius.circular(12),
-              ),
-              child: Row(
-                children: [
-                  Expanded(
-                    child: _toggleBtn(
-                      'Face avant',
-                      _showFront,
-                      () => setState(() => _showFront = true),
-                    ),
-                  ),
-                  Expanded(
-                    child: _toggleBtn(
-                      'Vue arrière',
-                      !_showFront,
-                      () => setState(() => _showFront = false),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            const SizedBox(height: 10),
-
-            // Muscles sélectionnés (chips) avec bouton "Voir exercices"
-            if (_selectedMuscles.isNotEmpty) ...[
-              Wrap(
-                spacing: 7,
-                runSpacing: 6,
-                children: _selectedMuscles
-                    .map(
-                      (m) => Chip(
-                        label: Text(
-                          m,
-                          style: const TextStyle(color: _kText, fontSize: 12),
-                        ),
-                        backgroundColor: _kGreen.withValues(alpha: 0.18),
-                        side: const BorderSide(color: _kGreen, width: 0.8),
-                        deleteIcon: const Icon(
-                          Icons.close,
-                          size: 14,
-                          color: _kTextSub,
-                        ),
-                        onDeleted: () =>
-                            setState(() => _selectedMuscles.remove(m)),
-                      ),
-                    )
-                    .toList(),
-              ),
-              const SizedBox(height: 12),
-              // ⭐ NOUVEAU BOUTON : Voir les exercices du muscle sélectionné
-              if (_selectedMuscles.isNotEmpty)
-                SizedBox(
-                  width: double.infinity,
-                  child: Wrap(
-                    spacing: 8,
-                    runSpacing: 8,
-                    children: _selectedMuscles.map((muscle) {
-                      return ElevatedButton.icon(
-                        onPressed: () {
-                          Navigator.push(
-                            context,
-                            MaterialPageRoute(
-                              builder: (_) => ExerciseScreen(
-                                muscleName: muscle,
-                                lastWorkedHours: 72,
-                              ),
-                            ),
-                          );
-                        },
-                        icon: const Icon(Icons.fitness_center, size: 16),
-                        label: Text('Voir exercices : $muscle'),
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: _kBlue,
-                          foregroundColor: _kSurface,
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 12,
-                            vertical: 8,
-                          ),
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(20),
-                          ),
-                        ),
-                      );
-                    }).toList(),
-                  ),
-                ),
-              const SizedBox(height: 10),
-            ],
-
-            // SVG Body Map (sélection uniquement, pas de navigation)
-            Center(
-              child: SizedBox(
-                width: _svgW,
-                height: _svgH,
-                child: Stack(
-                  children: [
-                    CustomPaint(
-                      size: const Size(_svgW, _svgH),
-                      painter: _BodyPainter(
-                        showFront: _showFront,
-                        selectedMuscles: _selectedMuscles,
-                        muscles: _currentMuscles,
-                      ),
-                    ),
-                    ..._currentMuscles.map((zone) {
-                      final isSelected = _selectedMuscles.contains(zone.name);
-                      return Positioned(
-                        left: zone.rect.left,
-                        top: zone.rect.top,
-                        width: zone.rect.width,
-                        height: zone.rect.height,
-                        child: GestureDetector(
-                          // ✅ Appui simple → sélectionner/désélectionner
-                          onTap: () => setState(() {
-                            if (isSelected)
-                              _selectedMuscles.remove(zone.name);
-                            else
-                              _selectedMuscles.add(zone.name);
-                          }),
-                          child: Container(
-                            decoration: BoxDecoration(
-                              color: isSelected
-                                  ? _kGreen.withValues(alpha: 0.35)
-                                  : Colors.transparent,
-                              borderRadius: BorderRadius.circular(6),
-                              border: isSelected
-                                  ? Border.all(color: _kGreen, width: 1.5)
-                                  : null,
-                            ),
-                            child: isSelected
-                                ? Center(
-                                    child: Text(
-                                      zone.name,
-                                      textAlign: TextAlign.center,
-                                      style: const TextStyle(
-                                        color: _kText,
-                                        fontSize: 9,
-                                        fontWeight: FontWeight.bold,
-                                      ),
-                                    ),
-                                  )
-                                : null,
-                          ),
-                        ),
-                      );
-                    }),
-                  ],
-                ),
-              ),
-            ),
-            const SizedBox(height: 10),
-
-            // Badges muscles (sélection uniquement)
-            Wrap(
-              spacing: 7,
-              runSpacing: 6,
-              children: _currentMuscles.map((zone) {
-                final isSelected = _selectedMuscles.contains(zone.name);
-                return GestureDetector(
-                  onTap: () => setState(() {
-                    if (isSelected)
-                      _selectedMuscles.remove(zone.name);
-                    else
-                      _selectedMuscles.add(zone.name);
-                  }),
-                  child: AnimatedContainer(
-                    duration: const Duration(milliseconds: 150),
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 12,
-                      vertical: 7,
-                    ),
-                    decoration: BoxDecoration(
-                      color: isSelected
-                          ? _kGreen.withValues(alpha: 0.15)
-                          : _kSurf2,
-                      borderRadius: BorderRadius.circular(20),
-                      border: Border.all(
-                        color: isSelected
-                            ? _kGreen.withValues(alpha: 0.5)
-                            : _kBorder,
-                        width: isSelected ? 1.5 : 1,
-                      ),
-                    ),
-                    child: Text(
-                      zone.name,
-                      style: TextStyle(
-                        color: isSelected ? _kGreen : _kTextSub,
-                        fontSize: 12,
-                        fontWeight: isSelected
-                            ? FontWeight.bold
-                            : FontWeight.normal,
-                      ),
-                    ),
-                  ),
-                );
-              }).toList(),
-            ),
-            const SizedBox(height: 24),
-
-            // ═══════════════════════════════════════
-            // RESSENTI POST-SÉANCE (Niveau 2 IA)
-            // ═══════════════════════════════════════
+            // ── Ressenti post-séance ──
             _buildRessentSection(),
             const SizedBox(height: 24),
 
@@ -529,9 +526,1147 @@ class _NewSessionScreenState extends State<NewSessionScreen>
   }
 
   // ─────────────────────────────────────────────
-  // CARDIO SECTION WIDGET
+  // TOGGLE MODE EXERCICES
   // ─────────────────────────────────────────────
+  Widget _buildExercisesModeToggle() {
+    return Container(
+      decoration: BoxDecoration(
+        color: _kSurface,
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(
+          color: _useDetailedExercises
+              ? _kGreen.withValues(alpha: 0.5)
+              : _kBorder,
+          width: _useDetailedExercises ? 1.5 : 1,
+        ),
+      ),
+      child: Column(
+        children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 14, 12, 14),
+            child: Row(
+              children: [
+                Container(
+                  width: 38,
+                  height: 38,
+                  decoration: BoxDecoration(
+                    color: _kGreen.withValues(alpha: 0.12),
+                    borderRadius: BorderRadius.circular(11),
+                  ),
+                  child: const Icon(
+                    Icons.list_alt_rounded,
+                    color: _kGreen,
+                    size: 20,
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text(
+                        'Saisie exercices détaillée',
+                        style: TextStyle(
+                          color: _kText,
+                          fontSize: 15,
+                          fontWeight: FontWeight.w800,
+                        ),
+                      ),
+                      Text(
+                        _useDetailedExercises
+                            ? '${_exercises.length} exercice(s) • Prédiction IA plus précise'
+                            : 'Activez pour saisir poids réel par exercice',
+                        style: TextStyle(
+                          color: _useDetailedExercises ? _kGreen : _kTextSub,
+                          fontSize: 11,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                Switch(
+                  value: _useDetailedExercises,
+                  onChanged: (v) => setState(() => _useDetailedExercises = v),
+                  activeColor: _kGreen,
+                ),
+              ],
+            ),
+          ),
+          if (!_useDetailedExercises)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 0, 16, 14),
+              child: Container(
+                padding: const EdgeInsets.all(10),
+                decoration: BoxDecoration(
+                  color: _kBlue.withValues(alpha: 0.06),
+                  borderRadius: BorderRadius.circular(10),
+                  border: Border.all(color: _kBlue.withValues(alpha: 0.2)),
+                ),
+                child: const Row(
+                  children: [
+                    Icon(Icons.info_outline_rounded, color: _kBlue, size: 14),
+                    SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        'La saisie détaillée permet à l\'IA d\'analyser la charge réelle par muscle (RPE, volume, échec musculaire).',
+                        style: TextStyle(color: _kBlue, fontSize: 11),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
 
+  // ─────────────────────────────────────────────
+  // SECTION EXERCICES DÉTAILLÉS
+  // ─────────────────────────────────────────────
+  Widget _buildDetailedExercisesSection() {
+    final totalVolume = _exercises.fold(0.0, (sum, e) => sum + e.totalVolume);
+    final maxWeight = _exercises.isEmpty
+        ? 0.0
+        : _exercises.map((e) => e.weightKg).reduce((a, b) => a > b ? a : b);
+
+    return Container(
+      decoration: BoxDecoration(
+        color: _kSurface,
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: _kGreen.withValues(alpha: 0.3), width: 1.5),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // Header avec stats
+          Container(
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              color: _kGreen.withValues(alpha: 0.06),
+              borderRadius: const BorderRadius.vertical(
+                top: Radius.circular(17),
+              ),
+            ),
+            child: Row(
+              children: [
+                const Icon(
+                  Icons.fitness_center_rounded,
+                  color: _kGreen,
+                  size: 18,
+                ),
+                const SizedBox(width: 8),
+                const Text(
+                  'Exercices de la séance',
+                  style: TextStyle(
+                    color: _kText,
+                    fontWeight: FontWeight.w800,
+                    fontSize: 14,
+                  ),
+                ),
+                const Spacer(),
+                if (_exercises.isNotEmpty) ...[
+                  _MiniStatBadge(
+                    '${maxWeight.toStringAsFixed(0)}kg max',
+                    _kBlue,
+                  ),
+                  const SizedBox(width: 6),
+                  _MiniStatBadge(
+                    '${totalVolume.toStringAsFixed(0)} vol.',
+                    _kOrange,
+                  ),
+                ],
+              ],
+            ),
+          ),
+
+          // Liste des exercices
+          if (_exercises.isEmpty)
+            Padding(
+              padding: const EdgeInsets.all(24),
+              child: Center(
+                child: Column(
+                  children: [
+                    Container(
+                      width: 56,
+                      height: 56,
+                      decoration: BoxDecoration(
+                        color: _kGreenL,
+                        borderRadius: BorderRadius.circular(16),
+                      ),
+                      child: const Icon(
+                        Icons.add_circle_outline_rounded,
+                        color: _kGreen,
+                        size: 28,
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    const Text(
+                      'Aucun exercice ajouté',
+                      style: TextStyle(
+                        color: _kText,
+                        fontWeight: FontWeight.w600,
+                        fontSize: 13,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    const Text(
+                      'Ajoutez vos exercices avec le poids utilisé',
+                      style: TextStyle(color: _kTextSub, fontSize: 11),
+                      textAlign: TextAlign.center,
+                    ),
+                  ],
+                ),
+              ),
+            )
+          else
+            ...(_exercises.asMap().entries.map(
+              (entry) => _buildExerciseCard(entry.key, entry.value),
+            )),
+
+          // Bouton ajouter un exercice
+          Padding(
+            padding: const EdgeInsets.all(12),
+            child: InkWell(
+              onTap: () => _showAddExerciseDialog(),
+              borderRadius: BorderRadius.circular(12),
+              child: Container(
+                width: double.infinity,
+                padding: const EdgeInsets.symmetric(vertical: 12),
+                decoration: BoxDecoration(
+                  color: _kGreen.withValues(alpha: 0.08),
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(
+                    color: _kGreen.withValues(alpha: 0.3),
+                    width: 1.5,
+                  ),
+                ),
+                child: const Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Icon(Icons.add_rounded, color: _kGreen, size: 20),
+                    SizedBox(width: 8),
+                    Text(
+                      'Ajouter un exercice',
+                      style: TextStyle(
+                        color: _kGreen,
+                        fontWeight: FontWeight.w700,
+                        fontSize: 13,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+
+          // Résumé muscles travaillés
+          if (_musclesFromExercises.isNotEmpty)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text(
+                    'Muscles travaillés',
+                    style: TextStyle(
+                      color: _kTextSub,
+                      fontSize: 11,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                  const SizedBox(height: 6),
+                  Wrap(
+                    spacing: 6,
+                    runSpacing: 5,
+                    children: _musclesFromExercises
+                        .map(
+                          (m) => Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 8,
+                              vertical: 3,
+                            ),
+                            decoration: BoxDecoration(
+                              color: _kGreenL,
+                              borderRadius: BorderRadius.circular(8),
+                              border: Border.all(
+                                color: _kGreen.withValues(alpha: 0.3),
+                              ),
+                            ),
+                            child: Text(
+                              m,
+                              style: const TextStyle(
+                                color: _kGreen,
+                                fontSize: 10,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                          ),
+                        )
+                        .toList(),
+                  ),
+                ],
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+
+  // ─────────────────────────────────────────────
+  // CARTE D'UN EXERCICE
+  // ─────────────────────────────────────────────
+  Widget _buildExerciseCard(int index, _ExerciseEntry exercise) {
+    final hasHighLoad = exercise.weightKg >= 80;
+    final hasFailure = exercise.failureReached;
+
+    return Container(
+      margin: const EdgeInsets.fromLTRB(12, 0, 12, 10),
+      decoration: BoxDecoration(
+        color: _kSurf2,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(
+          color: hasHighLoad || hasFailure
+              ? _kOrange.withValues(alpha: 0.4)
+              : _kBorder,
+          width: hasHighLoad || hasFailure ? 1.5 : 1,
+        ),
+      ),
+      child: Column(
+        children: [
+          // Header carte exercice
+          Padding(
+            padding: const EdgeInsets.fromLTRB(14, 12, 10, 8),
+            child: Row(
+              children: [
+                Container(
+                  width: 34,
+                  height: 34,
+                  decoration: BoxDecoration(
+                    color: _kGreen.withValues(alpha: 0.15),
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: Center(
+                    child: Text(
+                      '${index + 1}',
+                      style: const TextStyle(
+                        color: _kGreen,
+                        fontWeight: FontWeight.w800,
+                        fontSize: 13,
+                      ),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        exercise.exerciseName.isEmpty
+                            ? 'Exercice ${index + 1}'
+                            : exercise.exerciseName,
+                        style: const TextStyle(
+                          color: _kText,
+                          fontWeight: FontWeight.w700,
+                          fontSize: 13,
+                        ),
+                      ),
+                      if (exercise.muscleName.isNotEmpty)
+                        Text(
+                          exercise.muscleName,
+                          style: const TextStyle(
+                            color: _kTextSub,
+                            fontSize: 11,
+                          ),
+                        ),
+                    ],
+                  ),
+                ),
+                // Badges charge
+                if (exercise.weightKg > 0) ...[
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 7,
+                      vertical: 3,
+                    ),
+                    decoration: BoxDecoration(
+                      color: exercise.chargeLevelColor.withValues(alpha: 0.12),
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: Text(
+                      exercise.chargeLevel,
+                      style: TextStyle(
+                        color: exercise.chargeLevelColor,
+                        fontSize: 9,
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 6),
+                ],
+                // Bouton éditer
+                IconButton(
+                  icon: const Icon(Icons.edit_rounded, color: _kBlue, size: 18),
+                  onPressed: () => _showEditExerciseDialog(index, exercise),
+                  padding: const EdgeInsets.all(4),
+                  constraints: const BoxConstraints(),
+                ),
+                const SizedBox(width: 4),
+                // Bouton supprimer
+                IconButton(
+                  icon: const Icon(
+                    Icons.delete_outline_rounded,
+                    color: _kRed,
+                    size: 18,
+                  ),
+                  onPressed: () => _removeExercise(index),
+                  padding: const EdgeInsets.all(4),
+                  constraints: const BoxConstraints(),
+                ),
+              ],
+            ),
+          ),
+
+          // Stats de l'exercice
+          Padding(
+            padding: const EdgeInsets.fromLTRB(14, 0, 14, 12),
+            child: Row(
+              children: [
+                _ExerciseStatChip(
+                  '${exercise.weightKg.toStringAsFixed(1)} kg',
+                  Icons.fitness_center_rounded,
+                  _kBlue,
+                ),
+                const SizedBox(width: 6),
+                _ExerciseStatChip(
+                  '${exercise.setsCompleted} séries',
+                  Icons.repeat_rounded,
+                  _kGreen,
+                ),
+                const SizedBox(width: 6),
+                _ExerciseStatChip(
+                  '${exercise.repsCompleted} reps',
+                  Icons.numbers_rounded,
+                  _kOrange,
+                ),
+                if (exercise.rpe != null) ...[
+                  const SizedBox(width: 6),
+                  _ExerciseStatChip(
+                    'RPE ${exercise.rpe}',
+                    Icons.speed_rounded,
+                    exercise.rpe! >= 9
+                        ? _kRed
+                        : exercise.rpe! >= 7
+                        ? _kOrange
+                        : _kGreen,
+                  ),
+                ],
+                if (exercise.failureReached) ...[
+                  const SizedBox(width: 6),
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 6,
+                      vertical: 3,
+                    ),
+                    decoration: BoxDecoration(
+                      color: _kRedL,
+                      borderRadius: BorderRadius.circular(6),
+                      border: Border.all(color: _kRed.withValues(alpha: 0.3)),
+                    ),
+                    child: const Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(
+                          Icons.warning_amber_rounded,
+                          color: _kRed,
+                          size: 10,
+                        ),
+                        SizedBox(width: 3),
+                        Text(
+                          'Échec',
+                          style: TextStyle(
+                            color: _kRed,
+                            fontSize: 9,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ],
+            ),
+          ),
+
+          // Volume total
+          if (exercise.totalVolume > 0)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(14, 0, 14, 10),
+              child: Row(
+                children: [
+                  const Icon(
+                    Icons.bar_chart_rounded,
+                    size: 12,
+                    color: _kTextSub,
+                  ),
+                  const SizedBox(width: 5),
+                  Text(
+                    'Volume total : ${exercise.totalVolume.toStringAsFixed(0)} kg',
+                    style: const TextStyle(color: _kTextSub, fontSize: 11),
+                  ),
+                ],
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+
+  // ─────────────────────────────────────────────
+  // DIALOG AJOUT EXERCICE
+  // ─────────────────────────────────────────────
+  void _showAddExerciseDialog() {
+    final entry = _ExerciseEntry(
+      muscleName: _selectedMuscles.isNotEmpty ? _selectedMuscles.first : '',
+    );
+    _showExerciseFormDialog(
+      entry,
+      onSave: (saved) {
+        setState(() => _exercises.add(saved));
+      },
+    );
+  }
+
+  void _showEditExerciseDialog(int index, _ExerciseEntry entry) {
+    // Clone pour édition
+    final clone = _ExerciseEntry(
+      exerciseName: entry.exerciseName,
+      muscleName: entry.muscleName,
+      weightKg: entry.weightKg,
+      setsCompleted: entry.setsCompleted,
+      repsCompleted: entry.repsCompleted,
+      rpe: entry.rpe,
+      failureReached: entry.failureReached,
+      restSeconds: entry.restSeconds,
+      notes: entry.notes,
+    );
+    _showExerciseFormDialog(
+      clone,
+      onSave: (saved) {
+        setState(() => _exercises[index] = saved);
+      },
+      isEdit: true,
+    );
+  }
+
+  void _showExerciseFormDialog(
+    _ExerciseEntry entry, {
+    required Function(_ExerciseEntry) onSave,
+    bool isEdit = false,
+  }) {
+    final nameCtrl = TextEditingController(text: entry.exerciseName);
+    final weightCtrl = TextEditingController(
+      text: entry.weightKg > 0 ? entry.weightKg.toString() : '',
+    );
+    final repsCtrl = TextEditingController(text: entry.repsCompleted);
+    final notesCtrl = TextEditingController(text: entry.notes);
+
+    int sets = entry.setsCompleted;
+    int? rpe = entry.rpe;
+    bool failure = entry.failureReached;
+    int rest = entry.restSeconds;
+    String muscle = entry.muscleName;
+
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setSheet) => Container(
+          decoration: const BoxDecoration(
+            color: _kSurface,
+            borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+          ),
+          padding: EdgeInsets.only(
+            bottom: MediaQuery.of(ctx).viewInsets.bottom,
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              // Handle
+              Container(
+                margin: const EdgeInsets.only(top: 10, bottom: 4),
+                width: 40,
+                height: 4,
+                decoration: BoxDecoration(
+                  color: _kBorder,
+                  borderRadius: BorderRadius.circular(4),
+                ),
+              ),
+              // Header
+              Padding(
+                padding: const EdgeInsets.fromLTRB(20, 12, 20, 0),
+                child: Row(
+                  children: [
+                    Container(
+                      width: 38,
+                      height: 38,
+                      decoration: BoxDecoration(
+                        color: _kGreenL,
+                        borderRadius: BorderRadius.circular(11),
+                      ),
+                      child: const Icon(
+                        Icons.fitness_center_rounded,
+                        color: _kGreen,
+                        size: 20,
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Text(
+                      isEdit ? 'Modifier l\'exercice' : 'Ajouter un exercice',
+                      style: const TextStyle(
+                        color: _kText,
+                        fontWeight: FontWeight.w800,
+                        fontSize: 15,
+                      ),
+                    ),
+                    const Spacer(),
+                    IconButton(
+                      icon: const Icon(Icons.close_rounded, color: _kTextSub),
+                      onPressed: () => Navigator.pop(ctx),
+                    ),
+                  ],
+                ),
+              ),
+              const Divider(height: 20, color: _kBorder),
+
+              // Formulaire scrollable
+              Flexible(
+                child: SingleChildScrollView(
+                  padding: const EdgeInsets.fromLTRB(20, 0, 20, 20),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      // Nom de l'exercice
+                      const _FormLabel('Nom de l\'exercice *'),
+                      const SizedBox(height: 6),
+                      _sheetField(
+                        nameCtrl,
+                        'Ex: Développé couché, Squat...',
+                        Icons.fitness_center_rounded,
+                      ),
+                      const SizedBox(height: 14),
+
+                      // Muscle ciblé
+                      const _FormLabel('Muscle ciblé'),
+                      const SizedBox(height: 6),
+                      DropdownButtonFormField<String>(
+                        value:
+                            muscle.isNotEmpty &&
+                                _kMuscleOptions.contains(muscle)
+                            ? muscle
+                            : null,
+                        decoration: _sheetFieldDecoration(
+                          'Sélectionner...',
+                          Icons.person_rounded,
+                        ),
+                        dropdownColor: _kSurface,
+                        style: const TextStyle(color: _kText, fontSize: 13),
+                        items: _kMuscleOptions
+                            .map(
+                              (m) => DropdownMenuItem(value: m, child: Text(m)),
+                            )
+                            .toList(),
+                        onChanged: (v) => setSheet(() => muscle = v ?? ''),
+                      ),
+                      const SizedBox(height: 14),
+
+                      // Poids
+                      const _FormLabel('Poids utilisé (kg)'),
+                      const SizedBox(height: 6),
+                      _sheetField(
+                        weightCtrl,
+                        'Ex: 60.0',
+                        Icons.monitor_weight_rounded,
+                        isNumber: true,
+                      ),
+                      const SizedBox(height: 14),
+
+                      // Séries et Répétitions
+                      Row(
+                        children: [
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                const _FormLabel('Séries'),
+                                const SizedBox(height: 6),
+                                _SetsSelector(
+                                  value: sets,
+                                  onChanged: (v) => setSheet(() => sets = v),
+                                ),
+                              ],
+                            ),
+                          ),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                const _FormLabel('Répétitions'),
+                                const SizedBox(height: 6),
+                                _sheetField(
+                                  repsCtrl,
+                                  'Ex: 10 ou 8-12',
+                                  Icons.numbers_rounded,
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 14),
+
+                      // RPE
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          const _FormLabel('RPE (effort ressenti 1-10)'),
+                          if (rpe != null)
+                            Container(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 8,
+                                vertical: 3,
+                              ),
+                              decoration: BoxDecoration(
+                                color:
+                                    (rpe! >= 9
+                                            ? _kRed
+                                            : rpe! >= 7
+                                            ? _kOrange
+                                            : _kGreen)
+                                        .withValues(alpha: 0.12),
+                                borderRadius: BorderRadius.circular(10),
+                              ),
+                              child: Text(
+                                '$rpe/10',
+                                style: TextStyle(
+                                  color: rpe! >= 9
+                                      ? _kRed
+                                      : rpe! >= 7
+                                      ? _kOrange
+                                      : _kGreen,
+                                  fontWeight: FontWeight.w800,
+                                  fontSize: 12,
+                                ),
+                              ),
+                            ),
+                        ],
+                      ),
+                      const SizedBox(height: 6),
+                      SliderTheme(
+                        data: SliderThemeData(
+                          activeTrackColor: rpe == null
+                              ? _kBorder
+                              : (rpe! >= 9
+                                    ? _kRed
+                                    : rpe! >= 7
+                                    ? _kOrange
+                                    : _kGreen),
+                          inactiveTrackColor: _kBorder,
+                          thumbColor: rpe == null
+                              ? _kBorder
+                              : (rpe! >= 9
+                                    ? _kRed
+                                    : rpe! >= 7
+                                    ? _kOrange
+                                    : _kGreen),
+                          trackHeight: 4,
+                          thumbShape: const RoundSliderThumbShape(
+                            enabledThumbRadius: 9,
+                          ),
+                        ),
+                        child: Slider(
+                          value: rpe?.toDouble() ?? 0,
+                          min: 0,
+                          max: 10,
+                          divisions: 10,
+                          onChanged: (v) => setSheet(
+                            () => rpe = v.round() == 0 ? null : v.round(),
+                          ),
+                        ),
+                      ),
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: const [
+                          Text(
+                            'Non évalué',
+                            style: TextStyle(color: _kTextSub, fontSize: 9),
+                          ),
+                          Text(
+                            'Modéré',
+                            style: TextStyle(color: _kTextSub, fontSize: 9),
+                          ),
+                          Text(
+                            'Maximal',
+                            style: TextStyle(color: _kTextSub, fontSize: 9),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 14),
+
+                      // Repos entre séries
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          const _FormLabel('Repos entre séries'),
+                          Text(
+                            '${rest}s',
+                            style: const TextStyle(
+                              color: _kGreen,
+                              fontWeight: FontWeight.w700,
+                              fontSize: 12,
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 6),
+                      _RestSelector(
+                        value: rest,
+                        onChanged: (v) => setSheet(() => rest = v),
+                      ),
+                      const SizedBox(height: 14),
+
+                      // Échec musculaire
+                      Container(
+                        padding: const EdgeInsets.all(12),
+                        decoration: BoxDecoration(
+                          color: failure ? _kRedL : _kSurf2,
+                          borderRadius: BorderRadius.circular(12),
+                          border: Border.all(
+                            color: failure
+                                ? _kRed.withValues(alpha: 0.4)
+                                : _kBorder,
+                          ),
+                        ),
+                        child: Row(
+                          children: [
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  const Text(
+                                    'Échec musculaire atteint',
+                                    style: TextStyle(
+                                      color: _kText,
+                                      fontSize: 13,
+                                      fontWeight: FontWeight.w700,
+                                    ),
+                                  ),
+                                  Text(
+                                    failure
+                                        ? '⚠️ Récupération accrue nécessaire'
+                                        : 'Charge non maximale',
+                                    style: TextStyle(
+                                      color: failure ? _kRed : _kTextSub,
+                                      fontSize: 11,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                            Switch(
+                              value: failure,
+                              onChanged: (v) => setSheet(() => failure = v),
+                              activeColor: _kRed,
+                            ),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(height: 14),
+
+                      // Notes
+                      const _FormLabel('Notes (optionnel)'),
+                      const SizedBox(height: 6),
+                      TextField(
+                        controller: notesCtrl,
+                        maxLines: 2,
+                        style: const TextStyle(color: _kText, fontSize: 13),
+                        decoration: _sheetFieldDecoration(
+                          'Observations, sensations, points techniques...',
+                          Icons.notes_rounded,
+                        ),
+                      ),
+                      const SizedBox(height: 20),
+
+                      // Bouton sauvegarder
+                      SizedBox(
+                        width: double.infinity,
+                        child: ElevatedButton(
+                          onPressed: () {
+                            if (nameCtrl.text.trim().isEmpty) {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                const SnackBar(
+                                  content: Text(
+                                    'Le nom de l\'exercice est requis',
+                                  ),
+                                  backgroundColor: _kRed,
+                                ),
+                              );
+                              return;
+                            }
+                            final saved = _ExerciseEntry(
+                              exerciseName: nameCtrl.text.trim(),
+                              muscleName: muscle,
+                              weightKg: double.tryParse(weightCtrl.text) ?? 0.0,
+                              setsCompleted: sets,
+                              repsCompleted: repsCtrl.text.trim().isEmpty
+                                  ? '10'
+                                  : repsCtrl.text.trim(),
+                              rpe: rpe,
+                              failureReached: failure,
+                              restSeconds: rest,
+                              notes: notesCtrl.text.trim(),
+                            );
+                            Navigator.pop(ctx);
+                            onSave(saved);
+                          },
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: _kGreen,
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(14),
+                            ),
+                            padding: const EdgeInsets.symmetric(vertical: 14),
+                            elevation: 0,
+                          ),
+                          child: Text(
+                            isEdit ? 'Mettre à jour' : 'Ajouter l\'exercice',
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontWeight: FontWeight.w700,
+                              fontSize: 15,
+                            ),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  // ─────────────────────────────────────────────
+  // BODY MAP SECTION (mode simple)
+  // ─────────────────────────────────────────────
+  Widget _buildBodyMapSection() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        _SectionTitle('💪 Muscles ciblés', _kOrange),
+        const SizedBox(height: 4),
+        const Text(
+          'Appuyez sur un muscle pour le sélectionner',
+          style: TextStyle(color: _kTextSub, fontSize: 11),
+        ),
+        const SizedBox(height: 12),
+        Container(
+          decoration: BoxDecoration(
+            color: _kSurf2,
+            borderRadius: BorderRadius.circular(12),
+          ),
+          child: Row(
+            children: [
+              Expanded(
+                child: _toggleBtn(
+                  'Face avant',
+                  _showFront,
+                  () => setState(() => _showFront = true),
+                ),
+              ),
+              Expanded(
+                child: _toggleBtn(
+                  'Vue arrière',
+                  !_showFront,
+                  () => setState(() => _showFront = false),
+                ),
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 10),
+        if (_selectedMuscles.isNotEmpty) ...[
+          Wrap(
+            spacing: 7,
+            runSpacing: 6,
+            children: _selectedMuscles
+                .map(
+                  (m) => Chip(
+                    label: Text(
+                      m,
+                      style: const TextStyle(color: _kText, fontSize: 12),
+                    ),
+                    backgroundColor: _kGreen.withValues(alpha: 0.18),
+                    side: const BorderSide(color: _kGreen, width: 0.8),
+                    deleteIcon: const Icon(
+                      Icons.close,
+                      size: 14,
+                      color: _kTextSub,
+                    ),
+                    onDeleted: () => setState(() => _selectedMuscles.remove(m)),
+                  ),
+                )
+                .toList(),
+          ),
+          const SizedBox(height: 10),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: _selectedMuscles
+                .map(
+                  (muscle) => ElevatedButton.icon(
+                    onPressed: () => Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (_) => ExerciseScreen(
+                          muscleName: muscle,
+                          lastWorkedHours: 72,
+                        ),
+                      ),
+                    ),
+                    icon: const Icon(Icons.fitness_center, size: 16),
+                    label: Text('Voir exercices : $muscle'),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: _kBlue,
+                      foregroundColor: _kSurface,
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 12,
+                        vertical: 8,
+                      ),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(20),
+                      ),
+                    ),
+                  ),
+                )
+                .toList(),
+          ),
+          const SizedBox(height: 10),
+        ],
+        Center(
+          child: SizedBox(
+            width: _svgW,
+            height: _svgH,
+            child: Stack(
+              children: [
+                CustomPaint(
+                  size: const Size(_svgW, _svgH),
+                  painter: _BodyPainter(
+                    showFront: _showFront,
+                    selectedMuscles: _selectedMuscles,
+                    muscles: _currentMuscles,
+                  ),
+                ),
+                ..._currentMuscles.map((zone) {
+                  final isSelected = _selectedMuscles.contains(zone.name);
+                  return Positioned(
+                    left: zone.rect.left,
+                    top: zone.rect.top,
+                    width: zone.rect.width,
+                    height: zone.rect.height,
+                    child: GestureDetector(
+                      onTap: () => setState(() {
+                        if (isSelected)
+                          _selectedMuscles.remove(zone.name);
+                        else
+                          _selectedMuscles.add(zone.name);
+                      }),
+                      child: Container(
+                        decoration: BoxDecoration(
+                          color: isSelected
+                              ? _kGreen.withValues(alpha: 0.35)
+                              : Colors.transparent,
+                          borderRadius: BorderRadius.circular(6),
+                          border: isSelected
+                              ? Border.all(color: _kGreen, width: 1.5)
+                              : null,
+                        ),
+                        child: isSelected
+                            ? Center(
+                                child: Text(
+                                  zone.name,
+                                  textAlign: TextAlign.center,
+                                  style: const TextStyle(
+                                    color: _kText,
+                                    fontSize: 9,
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                ),
+                              )
+                            : null,
+                      ),
+                    ),
+                  );
+                }),
+              ],
+            ),
+          ),
+        ),
+        const SizedBox(height: 10),
+        Wrap(
+          spacing: 7,
+          runSpacing: 6,
+          children: _currentMuscles.map((zone) {
+            final isSelected = _selectedMuscles.contains(zone.name);
+            return GestureDetector(
+              onTap: () => setState(() {
+                if (isSelected)
+                  _selectedMuscles.remove(zone.name);
+                else
+                  _selectedMuscles.add(zone.name);
+              }),
+              child: AnimatedContainer(
+                duration: const Duration(milliseconds: 150),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 12,
+                  vertical: 7,
+                ),
+                decoration: BoxDecoration(
+                  color: isSelected ? _kGreen.withValues(alpha: 0.15) : _kSurf2,
+                  borderRadius: BorderRadius.circular(20),
+                  border: Border.all(
+                    color: isSelected
+                        ? _kGreen.withValues(alpha: 0.5)
+                        : _kBorder,
+                    width: isSelected ? 1.5 : 1,
+                  ),
+                ),
+                child: Text(
+                  zone.name,
+                  style: TextStyle(
+                    color: isSelected ? _kGreen : _kTextSub,
+                    fontSize: 12,
+                    fontWeight: isSelected
+                        ? FontWeight.bold
+                        : FontWeight.normal,
+                  ),
+                ),
+              ),
+            );
+          }).toList(),
+        ),
+      ],
+    );
+  }
+
+  // ─────────────────────────────────────────────
+  // CARDIO SECTION
+  // ─────────────────────────────────────────────
   Widget _buildCardioSection() {
     return Container(
       decoration: BoxDecoration(
@@ -546,7 +1681,6 @@ class _NewSessionScreenState extends State<NewSessionScreen>
       ),
       child: Column(
         children: [
-          // Toggle header
           Padding(
             padding: const EdgeInsets.fromLTRB(16, 14, 12, 14),
             child: Row(
@@ -599,8 +1733,6 @@ class _NewSessionScreenState extends State<NewSessionScreen>
               ],
             ),
           ),
-
-          // Cardio details (visible si activé)
           if (_hasCardio) ...[
             const Divider(color: _kBorder, height: 1),
             Padding(
@@ -608,7 +1740,6 @@ class _NewSessionScreenState extends State<NewSessionScreen>
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  // ── Type de cardio ──
                   const Text(
                     'Type de cardio',
                     style: TextStyle(
@@ -672,38 +1803,14 @@ class _NewSessionScreenState extends State<NewSessionScreen>
                     }).toList(),
                   ),
                   const SizedBox(height: 16),
-
-                  // ── Durée cardio ──
-                  Row(
-                    children: [
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            const Text(
-                              'Durée (minutes)',
-                              style: TextStyle(
-                                color: _kTextSub,
-                                fontSize: 11,
-                                fontWeight: FontWeight.w700,
-                              ),
-                            ),
-                            const SizedBox(height: 6),
-                            _buildField(
-                              _cardioDurCtrl,
-                              'Ex: 30',
-                              Icons.timer_outlined,
-                              isNumber: true,
-                              required: false,
-                            ),
-                          ],
-                        ),
-                      ),
-                    ],
+                  _buildField(
+                    _cardioDurCtrl,
+                    'Durée (minutes)',
+                    Icons.timer_outlined,
+                    isNumber: true,
+                    required: false,
                   ),
                   const SizedBox(height: 16),
-
-                  // ── Intensité cardio ──
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
@@ -727,8 +1834,6 @@ class _NewSessionScreenState extends State<NewSessionScreen>
                       activeTrackColor: _cardioColors[_cardioType] ?? _kGreen,
                       inactiveTrackColor: _kBorder,
                       thumbColor: _cardioColors[_cardioType] ?? _kGreen,
-                      overlayColor: (_cardioColors[_cardioType] ?? _kGreen)
-                          .withValues(alpha: 0.12),
                       trackHeight: 5,
                       thumbShape: const RoundSliderThumbShape(
                         enabledThumbRadius: 10,
@@ -743,54 +1848,6 @@ class _NewSessionScreenState extends State<NewSessionScreen>
                           setState(() => _cardioIntensity = v.round()),
                     ),
                   ),
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      const Text(
-                        'Légère',
-                        style: TextStyle(color: _kTextSub, fontSize: 10),
-                      ),
-                      const Text(
-                        'Modérée',
-                        style: TextStyle(color: _kTextSub, fontSize: 10),
-                      ),
-                      const Text(
-                        'Intense',
-                        style: TextStyle(color: _kTextSub, fontSize: 10),
-                      ),
-                    ],
-                  ),
-
-                  // ── Warning HIIT ──
-                  if (_cardioType == 'HIIT' && _cardioIntensity >= 8) ...[
-                    const SizedBox(height: 12),
-                    Container(
-                      padding: const EdgeInsets.all(10),
-                      decoration: BoxDecoration(
-                        color: _kRed.withValues(alpha: 0.08),
-                        borderRadius: BorderRadius.circular(10),
-                        border: Border.all(
-                          color: _kRed.withValues(alpha: 0.25),
-                        ),
-                      ),
-                      child: const Row(
-                        children: [
-                          Icon(
-                            Icons.warning_amber_rounded,
-                            color: _kRed,
-                            size: 14,
-                          ),
-                          SizedBox(width: 8),
-                          Expanded(
-                            child: Text(
-                              'HIIT haute intensité — l\'IA analysera le risque de surcharge accru',
-                              style: TextStyle(color: _kRed, fontSize: 11),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ],
                 ],
               ),
             ),
@@ -801,11 +1858,9 @@ class _NewSessionScreenState extends State<NewSessionScreen>
   }
 
   // ─────────────────────────────────────────────
-  // RESSENTI POST-SÉANCE WIDGET (Niveau 2 IA)
+  // RESSENTI POST-SÉANCE
   // ─────────────────────────────────────────────
-
   Widget _buildRessentSection() {
-    // Couleur dynamique selon le niveau de douleur
     Color painColor;
     String painLabel;
     if (_painLevel == 0) {
@@ -837,7 +1892,6 @@ class _NewSessionScreenState extends State<NewSessionScreen>
       ),
       child: Column(
         children: [
-          // ── Header ──
           Padding(
             padding: const EdgeInsets.fromLTRB(16, 14, 12, 14),
             child: Row(
@@ -856,11 +1910,11 @@ class _NewSessionScreenState extends State<NewSessionScreen>
                   ),
                 ),
                 const SizedBox(width: 12),
-                Expanded(
+                const Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      const Text(
+                      Text(
                         'Ressenti post-séance',
                         style: TextStyle(
                           color: _kText,
@@ -869,8 +1923,8 @@ class _NewSessionScreenState extends State<NewSessionScreen>
                         ),
                       ),
                       Text(
-                        'Ces informations améliorent les prédictions de l\'IA',
-                        style: const TextStyle(color: _kTextSub, fontSize: 11),
+                        'Ces informations améliorent les prédictions IA',
+                        style: TextStyle(color: _kTextSub, fontSize: 11),
                       ),
                     ],
                   ),
@@ -878,17 +1932,12 @@ class _NewSessionScreenState extends State<NewSessionScreen>
               ],
             ),
           ),
-
           const Divider(color: _kBorder, height: 1),
-
           Padding(
             padding: const EdgeInsets.all(16),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                // ─────────────────────────────────
-                // ÉCHAUFFEMENT
-                // ─────────────────────────────────
                 Row(
                   children: [
                     Expanded(
@@ -923,43 +1972,7 @@ class _NewSessionScreenState extends State<NewSessionScreen>
                     ),
                   ],
                 ),
-
-                // Alerte si pas d'échauffement
-                if (!_warmupDone) ...[
-                  const SizedBox(height: 10),
-                  Container(
-                    padding: const EdgeInsets.all(10),
-                    decoration: BoxDecoration(
-                      color: _kOrange.withValues(alpha: 0.08),
-                      borderRadius: BorderRadius.circular(10),
-                      border: Border.all(
-                        color: _kOrange.withValues(alpha: 0.25),
-                      ),
-                    ),
-                    child: const Row(
-                      children: [
-                        Icon(
-                          Icons.warning_amber_rounded,
-                          color: _kOrange,
-                          size: 14,
-                        ),
-                        SizedBox(width: 8),
-                        Expanded(
-                          child: Text(
-                            'Sans échauffement, le risque de blessure augmente de 40% — l\'IA en tiendra compte.',
-                            style: TextStyle(color: _kOrange, fontSize: 11),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ],
-
-                const SizedBox(height: 20),
-
-                // ─────────────────────────────────
-                // DOULEUR RESSENTIE
-                // ─────────────────────────────────
+                const SizedBox(height: 16),
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
@@ -971,7 +1984,6 @@ class _NewSessionScreenState extends State<NewSessionScreen>
                         fontWeight: FontWeight.w700,
                       ),
                     ),
-                    // Badge niveau de douleur
                     Container(
                       padding: const EdgeInsets.symmetric(
                         horizontal: 10,
@@ -1009,14 +2021,11 @@ class _NewSessionScreenState extends State<NewSessionScreen>
                   ],
                 ),
                 const SizedBox(height: 8),
-
-                // Slider douleur
                 SliderTheme(
                   data: SliderThemeData(
                     activeTrackColor: painColor,
                     inactiveTrackColor: _kBorder,
                     thumbColor: painColor,
-                    overlayColor: painColor.withValues(alpha: 0.12),
                     trackHeight: 5,
                     thumbShape: const RoundSliderThumbShape(
                       enabledThumbRadius: 10,
@@ -1030,70 +2039,6 @@ class _NewSessionScreenState extends State<NewSessionScreen>
                     onChanged: (v) => setState(() => _painLevel = v.round()),
                   ),
                 ),
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: const [
-                    Text(
-                      'Aucune',
-                      style: TextStyle(color: _kTextSub, fontSize: 10),
-                    ),
-                    Text(
-                      'Légère',
-                      style: TextStyle(color: _kTextSub, fontSize: 10),
-                    ),
-                    Text(
-                      'Modérée',
-                      style: TextStyle(color: _kTextSub, fontSize: 10),
-                    ),
-                    Text(
-                      'Intense',
-                      style: TextStyle(color: _kTextSub, fontSize: 10),
-                    ),
-                  ],
-                ),
-
-                // Alerte douleur élevée
-                if (_painLevel >= 7) ...[
-                  const SizedBox(height: 12),
-                  Container(
-                    padding: const EdgeInsets.all(10),
-                    decoration: BoxDecoration(
-                      color: _kRed.withValues(alpha: 0.08),
-                      borderRadius: BorderRadius.circular(10),
-                      border: Border.all(color: _kRed.withValues(alpha: 0.25)),
-                    ),
-                    child: const Row(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Icon(
-                          Icons.medical_services_rounded,
-                          color: _kRed,
-                          size: 14,
-                        ),
-                        SizedBox(width: 8),
-                        Expanded(
-                          child: Text(
-                            'Douleur intense détectée — l\'IA augmentera le niveau de risque de blessure. Consultez un professionnel si la douleur persiste.',
-                            style: TextStyle(color: _kRed, fontSize: 11),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ],
-
-                // Émojis visuels niveau douleur
-                const SizedBox(height: 12),
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                  children: [
-                    _PainEmoji(0, '😊', 'Aucune', _painLevel),
-                    _PainEmoji(3, '😐', 'Légère', _painLevel),
-                    _PainEmoji(6, '😣', 'Modérée', _painLevel),
-                    _PainEmoji(8, '😖', 'Forte', _painLevel),
-                    _PainEmoji(10, '😱', 'Intense', _painLevel),
-                  ],
-                ),
               ],
             ),
           ),
@@ -1103,23 +2048,20 @@ class _NewSessionScreenState extends State<NewSessionScreen>
   }
 
   // ─────────────────────────────────────────────
-  // PREDICTION WIDGET — enrichi
+  // PREDICTION WIDGET
   // ─────────────────────────────────────────────
-
   Widget _buildPrediction() {
     final fatigue = _prediction!['fatigue'];
     final injury = _prediction!['injury'];
     final overload = _prediction!['overload'];
-
     final fatigueLbl = fatigue?['label'] ?? 'N/A';
     final injuryLbl = injury?['label'] ?? 'N/A';
     final riskLevel = overload?['riskLevel'] ?? 'NORMAL';
-    final riskMuscles =
-        (overload?['highRiskMuscles'] as List?)?.cast<String>() ?? [];
     final warnings = (overload?['warnings'] as List?)?.cast<String>() ?? [];
     final recs = (overload?['recommendations'] as List?)?.cast<String>() ?? [];
-    final hasCardioIA =
-        fatigue?['hasCardio'] == true || injury?['hasCardio'] == true;
+    final exerciseCount = fatigue?['exerciseCount'] ?? 0;
+    final muscleRiskSource = fatigue?['muscleRiskSource'] ?? '';
+    final effectiveWeight = fatigue?['effectiveWeightUsed'] ?? 0;
 
     Color riskColor = switch (riskLevel) {
       'CRITIQUE' => _kRed,
@@ -1138,7 +2080,6 @@ class _NewSessionScreenState extends State<NewSessionScreen>
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // Header
           Row(
             children: [
               Container(
@@ -1165,7 +2106,7 @@ class _NewSessionScreenState extends State<NewSessionScreen>
                   ],
                 ),
               ),
-              if (hasCardioIA) ...[
+              if (exerciseCount > 0) ...[
                 const SizedBox(width: 8),
                 Container(
                   padding: const EdgeInsets.symmetric(
@@ -1173,18 +2114,22 @@ class _NewSessionScreenState extends State<NewSessionScreen>
                     vertical: 3,
                   ),
                   decoration: BoxDecoration(
-                    color: _kPurple.withValues(alpha: 0.12),
+                    color: _kBlue.withValues(alpha: 0.12),
                     borderRadius: BorderRadius.circular(8),
                   ),
-                  child: const Row(
+                  child: Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      Icon(Icons.favorite_rounded, color: _kPurple, size: 11),
-                      SizedBox(width: 4),
+                      const Icon(
+                        Icons.list_alt_rounded,
+                        color: _kBlue,
+                        size: 11,
+                      ),
+                      const SizedBox(width: 4),
                       Text(
-                        'CARDIO INCLUS',
-                        style: TextStyle(
-                          color: _kPurple,
+                        '$exerciseCount EXERCICES RÉELS',
+                        style: const TextStyle(
+                          color: _kBlue,
                           fontSize: 9,
                           fontWeight: FontWeight.w800,
                         ),
@@ -1195,93 +2140,25 @@ class _NewSessionScreenState extends State<NewSessionScreen>
               ],
             ],
           ),
-          // ── Résumé ressenti pris en compte ──
-          if (_painLevel > 0 || !_warmupDone) ...[
+          if (effectiveWeight > 0) ...[
             const SizedBox(height: 8),
-            Wrap(
-              spacing: 6,
-              runSpacing: 4,
-              children: [
-                if (_painLevel > 0)
-                  Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 8,
-                      vertical: 3,
-                    ),
-                    decoration: BoxDecoration(
-                      color:
-                          (_painLevel >= 7
-                                  ? _kRed
-                                  : _painLevel >= 4
-                                  ? _kOrange
-                                  : _kGreen)
-                              .withValues(alpha: 0.12),
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Icon(
-                          Icons.medical_services_rounded,
-                          color: _painLevel >= 7
-                              ? _kRed
-                              : _painLevel >= 4
-                              ? _kOrange
-                              : _kGreen,
-                          size: 10,
-                        ),
-                        const SizedBox(width: 4),
-                        Text(
-                          'DOULEUR $_painLevel/10 PRISE EN COMPTE',
-                          style: TextStyle(
-                            color: _painLevel >= 7
-                                ? _kRed
-                                : _painLevel >= 4
-                                ? _kOrange
-                                : _kGreen,
-                            fontSize: 9,
-                            fontWeight: FontWeight.w800,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                if (!_warmupDone)
-                  Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 8,
-                      vertical: 3,
-                    ),
-                    decoration: BoxDecoration(
-                      color: _kOrange.withValues(alpha: 0.12),
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                    child: const Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Icon(
-                          Icons.warning_amber_rounded,
-                          color: _kOrange,
-                          size: 10,
-                        ),
-                        SizedBox(width: 4),
-                        Text(
-                          'SANS ÉCHAUFFEMENT',
-                          style: TextStyle(
-                            color: _kOrange,
-                            fontSize: 9,
-                            fontWeight: FontWeight.w800,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-              ],
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+              decoration: BoxDecoration(
+                color: _kGreenL,
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Text(
+                'Charge effective analysée : ${effectiveWeight}kg${muscleRiskSource == 'EXERCICES_RÉELS' ? ' (données réelles)' : ''}',
+                style: const TextStyle(
+                  color: _kGreenDark,
+                  fontSize: 10,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
             ),
           ],
           const SizedBox(height: 14),
-
-          // Fatigue + Blessure
           Row(
             children: [
               Expanded(
@@ -1306,8 +2183,6 @@ class _NewSessionScreenState extends State<NewSessionScreen>
             ],
           ),
           const SizedBox(height: 10),
-
-          // Charge hebdo
           Container(
             padding: const EdgeInsets.all(12),
             decoration: BoxDecoration(
@@ -1328,9 +2203,7 @@ class _NewSessionScreenState extends State<NewSessionScreen>
                         style: TextStyle(color: _kTextSub, fontSize: 11),
                       ),
                       Text(
-                        '${overload?['sessionCount'] ?? 0} séances • '
-                        '${overload?['totalMinutes'] ?? 0} min muscu'
-                        '${(overload?['totalCardioMinutes'] ?? 0) > 0 ? ' + ${overload!['totalCardioMinutes']} min cardio' : ''}',
+                        '${overload?['sessionCount'] ?? 0} séances • ${overload?['totalMinutes'] ?? 0} min',
                         style: const TextStyle(color: _kText, fontSize: 11),
                       ),
                     ],
@@ -1357,69 +2230,6 @@ class _NewSessionScreenState extends State<NewSessionScreen>
               ],
             ),
           ),
-
-          // Muscles à risque
-          if (riskMuscles.isNotEmpty) ...[
-            const SizedBox(height: 10),
-            Container(
-              padding: const EdgeInsets.all(10),
-              decoration: BoxDecoration(
-                color: _kOrange.withValues(alpha: 0.06),
-                borderRadius: BorderRadius.circular(10),
-                border: Border.all(color: _kOrange.withValues(alpha: 0.2)),
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Row(
-                    children: [
-                      Icon(
-                        Icons.warning_amber_rounded,
-                        color: _kOrange,
-                        size: 13,
-                      ),
-                      SizedBox(width: 6),
-                      Text(
-                        'Muscles à risque ciblés',
-                        style: TextStyle(
-                          color: _kOrange,
-                          fontSize: 11,
-                          fontWeight: FontWeight.w700,
-                        ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 6),
-                  Wrap(
-                    spacing: 6,
-                    children: riskMuscles
-                        .map(
-                          (m) => Container(
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 8,
-                              vertical: 3,
-                            ),
-                            decoration: BoxDecoration(
-                              color: _kOrange.withValues(alpha: 0.12),
-                              borderRadius: BorderRadius.circular(8),
-                            ),
-                            child: Text(
-                              m,
-                              style: const TextStyle(
-                                color: _kOrange,
-                                fontSize: 10,
-                              ),
-                            ),
-                          ),
-                        )
-                        .toList(),
-                  ),
-                ],
-              ),
-            ),
-          ],
-
-          // Warnings + recommandations
           if (warnings.isNotEmpty) ...[
             const SizedBox(height: 10),
             ...warnings
@@ -1436,7 +2246,7 @@ class _NewSessionScreenState extends State<NewSessionScreen>
                           child: Text(
                             w,
                             style: const TextStyle(
-                              color: Colors.white60,
+                              color: Colors.black54,
                               fontSize: 11,
                             ),
                           ),
@@ -1482,9 +2292,8 @@ class _NewSessionScreenState extends State<NewSessionScreen>
   }
 
   // ─────────────────────────────────────────────
-  // HELPERS
+  // HELPERS UI
   // ─────────────────────────────────────────────
-
   Widget _toggleBtn(String label, bool active, VoidCallback onTap) {
     return GestureDetector(
       onTap: onTap,
@@ -1538,31 +2347,123 @@ class _NewSessionScreenState extends State<NewSessionScreen>
       ),
     );
   }
+
+  Widget _sheetField(
+    TextEditingController ctrl,
+    String hint,
+    IconData icon, {
+    bool isNumber = false,
+  }) {
+    return TextField(
+      controller: ctrl,
+      keyboardType: isNumber ? TextInputType.number : TextInputType.text,
+      style: const TextStyle(color: _kText, fontSize: 13),
+      decoration: _sheetFieldDecoration(hint, icon),
+    );
+  }
+
+  InputDecoration _sheetFieldDecoration(String hint, IconData icon) {
+    return InputDecoration(
+      hintText: hint,
+      hintStyle: const TextStyle(color: _kTextSub, fontSize: 12),
+      prefixIcon: Icon(icon, color: _kGreen, size: 18),
+      filled: true,
+      fillColor: _kSurf2,
+      contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+      border: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(10),
+        borderSide: BorderSide.none,
+      ),
+      focusedBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(10),
+        borderSide: const BorderSide(color: _kGreen, width: 1.5),
+      ),
+    );
+  }
 }
 
 // ─────────────────────────────────────────────
-// SMALL WIDGETS
+// WIDGETS PARTAGÉS
 // ─────────────────────────────────────────────
+
+class _FormLabel extends StatelessWidget {
+  final String text;
+  const _FormLabel(this.text);
+  @override
+  Widget build(BuildContext context) => Text(
+    text,
+    style: const TextStyle(
+      color: _kTextSub,
+      fontSize: 11,
+      fontWeight: FontWeight.w700,
+    ),
+  );
+}
 
 class _SectionTitle extends StatelessWidget {
   final String text;
   final Color color;
   const _SectionTitle(this.text, this.color);
-
   @override
-  Widget build(BuildContext context) {
-    return Text(
-      text,
-      style: TextStyle(color: color, fontSize: 14, fontWeight: FontWeight.w800),
-    );
-  }
+  Widget build(BuildContext context) => Text(
+    text,
+    style: TextStyle(color: color, fontSize: 14, fontWeight: FontWeight.w800),
+  );
+}
+
+class _MiniStatBadge extends StatelessWidget {
+  final String label;
+  final Color color;
+  const _MiniStatBadge(this.label, this.color);
+  @override
+  Widget build(BuildContext context) => Container(
+    padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
+    decoration: BoxDecoration(
+      color: color.withValues(alpha: 0.12),
+      borderRadius: BorderRadius.circular(8),
+    ),
+    child: Text(
+      label,
+      style: TextStyle(color: color, fontSize: 10, fontWeight: FontWeight.w700),
+    ),
+  );
+}
+
+class _ExerciseStatChip extends StatelessWidget {
+  final String label;
+  final IconData icon;
+  final Color color;
+  const _ExerciseStatChip(this.label, this.icon, this.color);
+  @override
+  Widget build(BuildContext context) => Container(
+    padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 4),
+    decoration: BoxDecoration(
+      color: color.withValues(alpha: 0.10),
+      borderRadius: BorderRadius.circular(8),
+      border: Border.all(color: color.withValues(alpha: 0.2)),
+    ),
+    child: Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Icon(icon, size: 10, color: color),
+        const SizedBox(width: 4),
+        Text(
+          label,
+          style: TextStyle(
+            color: color,
+            fontSize: 10,
+            fontWeight: FontWeight.w600,
+          ),
+        ),
+      ],
+    ),
+  );
 }
 
 class _IntensityBadge extends StatelessWidget {
   final int intensity;
   final String cardioType;
   const _IntensityBadge({required this.intensity, required this.cardioType});
-
   Color _color() {
     if (intensity >= 8) return _kRed;
     if (intensity >= 6) return _kOrange;
@@ -1609,74 +2510,93 @@ class _IntensityBadge extends StatelessWidget {
   }
 }
 
-// ── Widget emoji douleur cliquable ──
-class _PainEmoji extends StatelessWidget {
-  final int targetLevel;
-  final String emoji;
-  final String label;
-  final int currentLevel;
-
-  const _PainEmoji(this.targetLevel, this.emoji, this.label, this.currentLevel);
-
-  bool get _isActive {
-    if (targetLevel == 0) return currentLevel == 0;
-    if (targetLevel == 10) return currentLevel >= 9;
-    return (currentLevel - targetLevel).abs() <= 1;
-  }
-
+// Sélecteur de séries (- / nombre / +)
+class _SetsSelector extends StatelessWidget {
+  final int value;
+  final ValueChanged<int> onChanged;
+  const _SetsSelector({required this.value, required this.onChanged});
   @override
-  Widget build(BuildContext context) {
-    final active = _isActive;
-    return Column(
+  Widget build(BuildContext context) => Container(
+    decoration: BoxDecoration(
+      color: _kSurf2,
+      borderRadius: BorderRadius.circular(10),
+      border: Border.all(color: _kBorder),
+    ),
+    child: Row(
+      mainAxisAlignment: MainAxisAlignment.spaceBetween,
       children: [
-        AnimatedContainer(
-          duration: const Duration(milliseconds: 200),
-          padding: const EdgeInsets.all(8),
-          decoration: BoxDecoration(
-            color: active
-                ? (targetLevel >= 7
-                          ? _kRed
-                          : targetLevel >= 4
-                          ? _kOrange
-                          : _kGreen)
-                      .withValues(alpha: 0.15)
-                : Colors.transparent,
-            borderRadius: BorderRadius.circular(12),
-            border: active
-                ? Border.all(
-                    color:
-                        (targetLevel >= 7
-                                ? _kRed
-                                : targetLevel >= 4
-                                ? _kOrange
-                                : _kGreen)
-                            .withValues(alpha: 0.4),
-                  )
-                : null,
-          ),
-          child: Text(emoji, style: TextStyle(fontSize: active ? 22 : 18)),
+        IconButton(
+          icon: const Icon(Icons.remove, size: 18, color: _kRed),
+          onPressed: value > 1 ? () => onChanged(value - 1) : null,
+          constraints: const BoxConstraints(),
         ),
-        const SizedBox(height: 3),
         Text(
-          label,
-          style: TextStyle(
-            color: active ? _kText : _kTextSub,
-            fontSize: 9,
-            fontWeight: active ? FontWeight.w700 : FontWeight.normal,
+          '$value',
+          style: const TextStyle(
+            color: _kText,
+            fontWeight: FontWeight.w800,
+            fontSize: 16,
           ),
+        ),
+        IconButton(
+          icon: const Icon(Icons.add, size: 18, color: _kGreen),
+          onPressed: value < 20 ? () => onChanged(value + 1) : null,
+          constraints: const BoxConstraints(),
         ),
       ],
-    );
-  }
+    ),
+  );
+}
+
+// Sélecteur de temps de repos
+class _RestSelector extends StatelessWidget {
+  final int value;
+  final ValueChanged<int> onChanged;
+  const _RestSelector({required this.value, required this.onChanged});
+
+  static const List<int> _options = [30, 60, 90, 120, 180, 240, 300];
+
+  @override
+  Widget build(BuildContext context) => Wrap(
+    spacing: 7,
+    runSpacing: 6,
+    children: _options.map((seconds) {
+      final isSelected = value == seconds;
+      final label = seconds >= 60
+          ? '${seconds ~/ 60}min${seconds % 60 > 0 ? '${seconds % 60}s' : ''}'
+          : '${seconds}s';
+      return GestureDetector(
+        onTap: () => onChanged(seconds),
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 150),
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
+          decoration: BoxDecoration(
+            color: isSelected ? _kGreen.withValues(alpha: 0.15) : _kSurf2,
+            borderRadius: BorderRadius.circular(20),
+            border: Border.all(
+              color: isSelected ? _kGreen.withValues(alpha: 0.5) : _kBorder,
+              width: isSelected ? 1.5 : 1,
+            ),
+          ),
+          child: Text(
+            label,
+            style: TextStyle(
+              color: isSelected ? _kGreen : _kTextSub,
+              fontSize: 11,
+              fontWeight: isSelected ? FontWeight.w700 : FontWeight.normal,
+            ),
+          ),
+        ),
+      );
+    }).toList(),
+  );
 }
 
 class _PredCard extends StatelessWidget {
   final IconData icon;
-  final String label;
-  final String value;
+  final String label, value;
   final double confidence;
   final bool isWarning;
-
   const _PredCard({
     required this.icon,
     required this.label,
@@ -1684,7 +2604,6 @@ class _PredCard extends StatelessWidget {
     required this.confidence,
     required this.isWarning,
   });
-
   @override
   Widget build(BuildContext context) {
     final color = isWarning ? _kRed : _kGreen;
@@ -1741,7 +2660,6 @@ class _PredCard extends StatelessWidget {
 // ─────────────────────────────────────────────
 // MUSCLE ZONE MODEL + BODY PAINTER
 // ─────────────────────────────────────────────
-
 class _MuscleZone {
   final String name;
   final Rect rect;
@@ -1752,7 +2670,6 @@ class _BodyPainter extends CustomPainter {
   final bool showFront;
   final Set<String> selectedMuscles;
   final List<_MuscleZone> muscles;
-
   const _BodyPainter({
     required this.showFront,
     required this.selectedMuscles,
@@ -1768,7 +2685,6 @@ class _BodyPainter extends CustomPainter {
       ..color = const Color(0xFF4A6FA5)
       ..style = PaintingStyle.stroke
       ..strokeWidth = 2;
-
     final cx = size.width / 2;
 
     canvas.drawOval(
@@ -1876,7 +2792,6 @@ class _BodyPainter extends CustomPainter {
       ..color = Color(0xFF4A6FA5).withValues(alpha: 0.4)
       ..style = PaintingStyle.stroke
       ..strokeWidth = 1;
-
     if (showFront) {
       canvas.drawLine(Offset(cx, 100), Offset(cx, 280), detail);
       for (int i = 0; i < 3; i++) {
@@ -1886,7 +2801,6 @@ class _BodyPainter extends CustomPainter {
           detail,
         );
       }
-      canvas.drawLine(Offset(cx - 52, 166), Offset(cx + 52, 166), detail);
     } else {
       for (int i = 0; i < 9; i++) {
         canvas.drawOval(
