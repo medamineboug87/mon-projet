@@ -7,6 +7,7 @@ import com.example.project_backend.Repository.TrainingSessionRepository;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
+import java.time.LocalDate;
 import java.util.*;
 
 /**
@@ -194,13 +195,17 @@ public class SessionExerciseController {
     @GetMapping("/members/{memberId}/exercises/weekly-volume")
     public ResponseEntity<?> getWeeklyVolume(@PathVariable Long memberId) {
         try {
-            List<Object[]> rawData = exerciseRepository.findWeeklyVolumeByMuscle(memberId);
-            List<Map<String, Object>> result = rawData.stream()
-                    .map(row -> Map.of(
-                            "muscle", row[0] != null ? row[0].toString() : "Inconnu",
-                            "volume", row[1] != null ? ((Number) row[1]).doubleValue() : 0.0
-                    ))
-                    .toList();
+            LocalDate sevenDaysAgo = LocalDate.now().minusDays(7);
+            List<Object[]> rawData = exerciseRepository.findWeeklyVolumeByMuscle(memberId, sevenDaysAgo);
+            List<Map<String, Object>> result = new ArrayList<>();
+
+            for (Object[] row : rawData) {
+                Map<String, Object> item = new HashMap<>();
+                item.put("muscle", row[0] != null ? row[0].toString() : "Inconnu");
+                item.put("volume", row[1] != null ? ((Number) row[1]).doubleValue() : 0.0);
+                result.add(item);
+            }
+
             return ResponseEntity.ok(result);
         } catch (Exception e) {
             return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
