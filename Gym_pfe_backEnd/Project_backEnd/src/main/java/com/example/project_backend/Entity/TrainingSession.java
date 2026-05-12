@@ -49,27 +49,27 @@ public class TrainingSession {
 
     // ===== Getters =====
 
-    public Long    getId()                     { return id; }
-    public LocalDate getDate()                 { return date; }
-    public int     getDuration()               { return duration; }
-    public int     getIntensity()              { return intensity; }
-    public double  getWeightLifted()           { return weightLifted; }
-    public Member  getMember()                 { return member; }
-    public Double  getFatigueScore()           { return fatigueScore; }
-    public Double  getLoadBalanceScore()       { return loadBalanceScore; }
-    public Double  getAclRiskScore()           { return aclRiskScore; }
-    public Integer getRecoveryDaysPerWeek()    { return recoveryDaysPerWeek; }
-    public String  getTargetMuscles()          { return targetMuscles; }
+    public Long getId()                     { return id; }
+    public LocalDate getDate()              { return date; }
+    public int getDuration()                { return duration; }
+    public int getIntensity()               { return intensity; }
+    public double getWeightLifted()         { return weightLifted; }
+    public Member getMember()               { return member; }
+    public Double getFatigueScore()         { return fatigueScore; }
+    public Double getLoadBalanceScore()     { return loadBalanceScore; }
+    public Double getAclRiskScore()         { return aclRiskScore; }
+    public Integer getRecoveryDaysPerWeek() { return recoveryDaysPerWeek; }
+    public String getTargetMuscles()        { return targetMuscles; }
 
     // Cardio
     public Boolean getHasCardio()              { return hasCardio != null && hasCardio; }
     public Integer getCardioDurationMinutes()  { return cardioDurationMinutes != null ? cardioDurationMinutes : 0; }
-    public String  getCardioType()             { return cardioType != null ? cardioType : ""; }
+    public String getCardioType()              { return cardioType != null ? cardioType : ""; }
     public Integer getCardioIntensity()        { return cardioIntensity != null ? cardioIntensity : 0; }
 
     // Nouveaux champs Niveau 2
-    public Integer getPainLevel()              { return painLevel; }
-    public Boolean getWarmupDone()             { return warmupDone; }
+    public Integer getPainLevel()          { return painLevel; }
+    public Boolean getWarmupDone()         { return warmupDone; }
 
     // ── Exercises (Niveau 3 — charge réelle par exercice) ──
     public List<SessionExercise> getExercises() { return exercises; }
@@ -111,7 +111,6 @@ public class TrainingSession {
      */
     public Double getExerciseBasedMuscleRiskScore() {
         if (exercises == null || exercises.isEmpty()) return null;
-        // Score = moyenne pondérée : exercices avec charge élevée pèsent plus
         double totalWeightedRisk = 0.0;
         double totalWeight = 0.0;
         for (SessionExercise ex : exercises) {
@@ -120,15 +119,33 @@ public class TrainingSession {
                 totalWeight += ex.getWeightKg();
             }
         }
-        // Retourner le volume normalisé entre 1.0 et 3.0
         if (totalWeight == 0) return null;
         double avgWeight = totalWeightedRisk / exercises.size();
-        // Normalisation : < 30kg = 1.0, 30-80kg = 1.5-2.0, > 80kg = 2.5-3.0
         if (avgWeight < 20)  return 1.0;
         if (avgWeight < 40)  return 1.5;
         if (avgWeight < 60)  return 2.0;
         if (avgWeight < 100) return 2.5;
         return 3.0;
+    }
+
+    // ═══════════════════════════════════════════════════════════════════
+    // NOUVELLES MÉTHODES POUR AIService (Limite 8)
+    // ═══════════════════════════════════════════════════════════════════
+
+    /**
+     * Retourne le poids moyen de la séance.
+     * Si des exercices existent → moyenne des poids des exercices
+     * Sinon → retourne weightLifted (valeur globale)
+     */
+    public double getAverageWeight() {
+        if (exercises == null || exercises.isEmpty()) {
+            return weightLifted;
+        }
+        return exercises.stream()
+                .filter(ex -> ex.getWeightKg() != null && ex.getWeightKg() > 0)
+                .mapToDouble(SessionExercise::getWeightKg)
+                .average()
+                .orElse(weightLifted);
     }
 
     // ===== Setters =====

@@ -27,16 +27,16 @@ public class AIController {
     private final AIService aiService;
     private final MemberService memberService;
     private final TrainingSessionService trainingSessionService;
-    private final MemberProfileService memberProfileService; // ← NOUVEAU
+    private final MemberProfileService memberProfileService;
 
     public AIController(AIService aiService,
                         MemberService memberService,
                         TrainingSessionService trainingSessionService,
                         MemberProfileService memberProfileService) {
-        this.aiService             = aiService;
-        this.memberService         = memberService;
+        this.aiService = aiService;
+        this.memberService = memberService;
         this.trainingSessionService = trainingSessionService;
-        this.memberProfileService  = memberProfileService;
+        this.memberProfileService = memberProfileService;
     }
 
     private List<TrainingSession> getSessionsOrFallback(Long memberId, Long sessionId) {
@@ -90,16 +90,6 @@ public class AIController {
         }
     }
 
-    /**
-     * Prédiction complète — intègre désormais le MemberProfile (Niveau 3).
-     *
-     * Le profil enrichit la réponse avec :
-     * - objectif du membre → recommandations personnalisées
-     * - douleurs chroniques → multiplicateur de risque ajusté
-     * - qualité de sommeil + stress → multiplicateur de récupération
-     * - restrictions d'exercices → avertissements ciblés
-     * - niveau déclaré vs niveau estimé → cohérence détectée
-     */
     @GetMapping("/predict/{memberId}/{sessionId}")
     public ResponseEntity<?> getFullPrediction(
             @PathVariable Long memberId,
@@ -109,50 +99,39 @@ public class AIController {
 
         try {
             Member member = memberService.getMemberById(memberId);
-            List<TrainingSession> sessions = getSessionsOrFallback(memberId, sessionId);
+            TrainingSession lastSession = trainingSessionService.getById(sessionId);
+            List<TrainingSession> previousSessions = trainingSessionService.getSessionsLastWeek(memberId);
 
-            // ── Prédictions core (existantes) ──
             Map<String, Object> result = new HashMap<>();
-            result.put("fatigue",          aiService.predictFatigue(member, sessions));
-            result.put("injury",           aiService.predictInjury(member, sessions));
-            result.put("overload",         aiService.analyzeOverload(member, sessions));
-            result.put("memberId",         memberId);
-            result.put("sessionId",        sessionId);
-            result.put("sessionsAnalyzed", sessions.size());
-            result.put("period",           "7 derniers jours");
+            result.put("fatigue", aiService.predictFatigue(member, previousSessions));
+            result.put("injury", aiService.predictInjury(member, previousSessions));
+            result.put("overload", aiService.analyzeOverload(member, lastSession, previousSessions));
+            result.put("memberId", memberId);
+            result.put("sessionId", sessionId);
+            result.put("sessionsAnalyzed", previousSessions.size());
+            result.put("period", "7 derniers jours");
 
-            // ── NIVEAU 3 : Intégration du MemberProfile ──
             Optional<MemberProfile> profileOpt = memberProfileService.getProfile(memberId);
             if (profileOpt.isPresent()) {
                 MemberProfile profile = profileOpt.get();
                 Map<String, Object> profileMap = memberProfileService.toMap(profile);
 
-                // Multiplicateurs calculés par le service
-                double goalMult      = memberProfileService.goalRiskMultiplier(profile.getPrimaryGoal());
-                double chronicMult   = memberProfileService.chronicPainRiskMultiplier(profile);
-                double recoveryMult  = memberProfileService.recoveryMultiplier(profile);
+                double goalMult = memberProfileService.goalRiskMultiplier(profile.getPrimaryGoal());
+                double chronicMult = memberProfileService.chronicPainRiskMultiplier(profile);
+                double recoveryMult = memberProfileService.recoveryMultiplier(profile);
 
-                // Enrichir le résultat avec les données profil
                 result.put("memberProfile", profileMap);
+                result.put("personalizedRecommendations", buildPersonalizedRecommendations(profile, previousSessions));
+                result.put("medicalAlerts", buildMedicalAlerts(profile));
 
-                // Recommandations personnalisées selon l'objectif
-                List<String> personalizedRecs = buildPersonalizedRecommendations(profile, sessions);
-                result.put("personalizedRecommendations", personalizedRecs);
-
-                // Alertes liées au profil médical
-                List<String> medicalAlerts = buildMedicalAlerts(profile);
-                result.put("medicalAlerts", medicalAlerts);
-
-                // Indicateurs de risque globaux ajustés par le profil
                 result.put("profileRiskMultipliers", Map.of(
-                        "goal",        goalMult,
+                        "goal", goalMult,
                         "chronicPain", chronicMult,
-                        "recovery",    recoveryMult,
-                        "combined",    Math.round(goalMult * chronicMult * recoveryMult * 100.0) / 100.0
+                        "recovery", recoveryMult,
+                        "combined", Math.round(goalMult * chronicMult * recoveryMult * 100.0) / 100.0
                 ));
 
-                // Cohérence entre niveau déclaré et estimation IA
-                result.put("levelConsistency", checkLevelConsistency(profile, sessions));
+                result.put("levelConsistency", checkLevelConsistency(profile, previousSessions));
 
                 log.info("✅ Profil IA intégré — objectif={}, niveau={}",
                         profile.getPrimaryGoal(), profile.getSelfDeclaredLevel());
@@ -162,7 +141,7 @@ public class AIController {
                 result.put("profileMessage", "Profil IA non renseigné — complétez votre profil pour des recommandations personnalisées");
             }
 
-            log.info("✅ Prédiction complète retournée — {} séances analysées", sessions.size());
+            log.info("✅ Prédiction complète retournée — {} séances analysées", previousSessions.size());
             return ResponseEntity.ok(result);
 
         } catch (RuntimeException e) {
@@ -178,24 +157,14 @@ public class AIController {
     @GetMapping("/health")
     public ResponseEntity<Map<String, Object>> health() {
         return ResponseEntity.ok(Map.of(
-                "status",  "available",
+                "status", "available",
                 "service", "AI Controller + MemberProfile",
                 "version", "3.0"
         ));
     }
 
-    // ─────────────────────────────────────────────
-    // HELPERS — recommandations & alertes profil
-    // ─────────────────────────────────────────────
-
-    /**
-     * Recommandations personnalisées selon l'objectif du membre
-     * et les données de la semaine.
-     */
-    private List<String> buildPersonalizedRecommendations(
-            MemberProfile profile, List<TrainingSession> sessions) {
-
-        java.util.List<String> recs = new java.util.ArrayList<>();
+    private List<String> buildPersonalizedRecommendations(MemberProfile profile, List<TrainingSession> sessions) {
+        List<String> recs = new java.util.ArrayList<>();
         if (profile.getPrimaryGoal() == null) return recs;
 
         int sessionCount = sessions.size();
@@ -234,17 +203,14 @@ public class AIController {
             case GENERAL_FITNESS -> recs.add("💚 Objectif bien-être : continuez votre routine équilibrée — vous êtes sur la bonne voie.");
         }
 
-        // Recommandations liées au sommeil
         if (profile.getAvgSleepHours() != null && profile.getAvgSleepHours() < 6.5) {
             recs.add("😴 Sommeil insuffisant (" + profile.getAvgSleepHours() + "h/nuit) : la récupération musculaire est fortement impactée. Visez 7-9h.");
         }
 
-        // Recommandations liées au stress
         if (profile.getStressLevel() != null && profile.getStressLevel() >= 7) {
             recs.add("🧘 Niveau de stress élevé (" + profile.getStressLevel() + "/10) : intégrez des techniques de récupération active (yoga, respiration, marche).");
         }
 
-        // Restrictions d'exercices
         if (profile.getExerciseRestrictions() != null && !profile.getExerciseRestrictions().isBlank()) {
             recs.add("🚫 Exercices à éviter (déclarés) : " + profile.getExerciseRestrictions());
         }
@@ -252,11 +218,8 @@ public class AIController {
         return recs;
     }
 
-    /**
-     * Alertes médicales basées sur le profil déclaré.
-     */
     private List<String> buildMedicalAlerts(MemberProfile profile) {
-        java.util.List<String> alerts = new java.util.ArrayList<>();
+        List<String> alerts = new java.util.ArrayList<>();
 
         if (profile.getCurrentInjuries() != null && !profile.getCurrentInjuries().isBlank()) {
             alerts.add("🔴 Blessure en cours : " + profile.getCurrentInjuries() + " — adapter la séance en conséquence.");
@@ -277,28 +240,24 @@ public class AIController {
         return alerts;
     }
 
-    /**
-     * Compare le niveau déclaré par le membre avec l'estimation IA
-     * basée sur le nombre de séances.
-     */
     private Map<String, Object> checkLevelConsistency(MemberProfile profile, List<TrainingSession> sessions) {
         Map<String, Object> consistency = new HashMap<>();
 
         int sessionCount = sessions.size();
         String aiEstimatedLevel;
-        if (sessionCount < 10)      aiEstimatedLevel = "BEGINNER";
+        if (sessionCount < 10) aiEstimatedLevel = "BEGINNER";
         else if (sessionCount < 60) aiEstimatedLevel = "INTERMEDIATE";
         else if (sessionCount < 120) aiEstimatedLevel = "ADVANCED";
-        else                         aiEstimatedLevel = "ATHLETE";
+        else aiEstimatedLevel = "ATHLETE";
 
         String declaredLevel = profile.getSelfDeclaredLevel() != null
                 ? profile.getSelfDeclaredLevel().name() : "BEGINNER";
 
         boolean isConsistent = declaredLevel.equals(aiEstimatedLevel);
 
-        consistency.put("declaredLevel",   declaredLevel);
+        consistency.put("declaredLevel", declaredLevel);
         consistency.put("aiEstimatedLevel", aiEstimatedLevel);
-        consistency.put("isConsistent",     isConsistent);
+        consistency.put("isConsistent", isConsistent);
 
         if (!isConsistent) {
             if (isHigherThan(declaredLevel, aiEstimatedLevel)) {
@@ -312,7 +271,7 @@ public class AIController {
     }
 
     private boolean isHigherThan(String l1, String l2) {
-        java.util.List<String> order = java.util.List.of("BEGINNER", "INTERMEDIATE", "ADVANCED", "ATHLETE");
+        List<String> order = List.of("BEGINNER", "INTERMEDIATE", "ADVANCED", "ATHLETE");
         return order.indexOf(l1) > order.indexOf(l2);
     }
 }
