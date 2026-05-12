@@ -32,4 +32,51 @@ public interface SessionExerciseRepository extends JpaRepository<SessionExercise
             "GROUP BY se.muscleName")
     List<Object[]> findWeeklyVolumeByMuscle(@Param("memberId") Long memberId,
                                             @Param("sevenDaysAgo") LocalDate sevenDaysAgo);
+
+    // ════════════════════════════════════════════════════════════════════
+    // LIMITE 8 — Surveillance de la progression des charges par exercice
+    // ════════════════════════════════════════════════════════════════════
+
+    /**
+     * Récupère les N dernières occurrences d'un exercice pour un membre,
+     * ordonnées du plus récent au plus ancien.
+     * Utilisé pour calculer la progression des charges exercice par exercice.
+     */
+    @Query("""
+        SELECT se FROM SessionExercise se
+        WHERE se.session.member.id = :memberId
+          AND LOWER(se.exerciseName) = LOWER(:exerciseName)
+        ORDER BY se.session.date DESC
+        """)
+    List<SessionExercise> findLastOccurrencesByExercise(
+            @Param("memberId") Long memberId,
+            @Param("exerciseName") String exerciseName);
+
+    /**
+     * Récupère tous les exercices d'une séance en cours (par sessionId)
+     * pour les comparer aux occurrences précédentes du même exercice.
+     */
+    @Query("""
+        SELECT se FROM SessionExercise se
+        WHERE se.session.id = :sessionId
+        ORDER BY se.exerciseOrder ASC
+        """)
+    List<SessionExercise> findCurrentSessionExercises(@Param("sessionId") Long sessionId);
+
+    /**
+     * Cherche la dernière occurrence d'un exercice pour un membre
+     * AVANT une date donnée (excluant la séance courante).
+     * Retourne au max les 4 dernières séances précédentes.
+     */
+    @Query("""
+        SELECT se FROM SessionExercise se
+        WHERE se.session.member.id = :memberId
+          AND LOWER(se.exerciseName) = LOWER(:exerciseName)
+          AND se.session.date < :beforeDate
+        ORDER BY se.session.date DESC
+        """)
+    List<SessionExercise> findPreviousOccurrencesByExercise(
+            @Param("memberId") Long memberId,
+            @Param("exerciseName") String exerciseName,
+            @Param("beforeDate") LocalDate beforeDate);
 }
