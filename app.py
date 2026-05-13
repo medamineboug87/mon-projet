@@ -1,6 +1,6 @@
 """
 app.py — Service IA pour Smart Gym
-Version 3.0 - avec endpoint /retrain
+Version 3.1 - avec intégration niveau membre, sommeil, stress
 Endpoints:
   - GET  /health
   - POST /predict_fatigue
@@ -9,7 +9,7 @@ Endpoints:
 """
 
 from fastapi import FastAPI, HTTPException, BackgroundTasks
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from typing import Optional, List, Dict, Any
 import joblib
 import numpy as np
@@ -24,11 +24,46 @@ from pathlib import Path
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("ai-api")
 
-app = FastAPI(title="Smart Gym AI API", version="3.0")
+app = FastAPI(title="Smart Gym AI API", version="3.1")
 
 # ── Création du dossier pour les données de réentraînement ──
 RETRAIN_DATA_DIR = Path("retrain_data")
 RETRAIN_DATA_DIR.mkdir(exist_ok=True)
+
+# ══════════════════════════════════════════════════════════════
+# MULTIPLICATEURS POUR LES LIMITES #1 ET #4
+# ══════════════════════════════════════════════════════════════
+
+# Multiplicateur de fatigue selon le niveau (Limite #1)
+# Débutant = fatigue plus rapide, Athlète = fatigue plus lente
+FATIGUE_LEVEL_MULTIPLIER = {
+    "BEGINNER": 1.4,
+    "INTERMEDIATE": 1.15,
+    "ADVANCED": 1.0,
+    "ATHLETE": 0.85
+}
+
+# Multiplicateur de risque de blessure selon le niveau (Limite #1)
+INJURY_LEVEL_MULTIPLIER = {
+    "BEGINNER": 1.5,
+    "INTERMEDIATE": 1.2,
+    "ADVANCED": 1.0,
+    "ATHLETE": 0.9
+}
+
+# Multiplicateur de récupération selon le sommeil (Limite #4)
+SLEEP_MULTIPLIER = {
+    "poor": 1.3,      # < 6h
+    "moderate": 1.15, # 6-7h
+    "good": 1.0       # >= 7h
+}
+
+# Multiplicateur de récupération selon le stress (Limite #4)
+STRESS_MULTIPLIER = {
+    "high": 1.25,     # >= 7/10
+    "moderate": 1.1,  # 5-6/10
+    "low": 1.0        # <= 4/10
+}
 
 # ── Chargement des modèles ──
 try:
@@ -81,7 +116,7 @@ except:
 
 
 # ══════════════════════════════════════════════════════════════
-# SCHÉMAS D'ENTRÉE
+# SCHÉMAS D'ENTRÉE (avec niveau, sommeil, stress)
 # ══════════════════════════════════════════════════════════════
 
 class FatigueInput(BaseModel):
@@ -97,6 +132,10 @@ class FatigueInput(BaseModel):
     cardioDurationMinutes: Optional[float] = 0.0
     cardioIntensity: Optional[float] = 0.0
     muscleRiskScore: Optional[float] = 1.0
+    # ── NOUVEAUX CHAMPS (Limites #1 et #4) ──
+    fitnessLevel: Optional[str] = Field("BEGINNER", description="BEGINNER, INTERMEDIATE, ADVANCED, ATHLETE")
+    avgSleepHours: Optional[float] = Field(7.0, description="Heures de sommeil par nuit", ge=0, le=12)
+    stressLevel: Optional[int] = Field(5, description="Niveau de stress 0-10", ge=0, le=10)
 
 
 class InjuryInput(BaseModel):
@@ -115,6 +154,10 @@ class InjuryInput(BaseModel):
     muscleRiskScore: Optional[float] = 1.0
     Gender: Optional[int] = 1
     BMI: Optional[float] = 22.5
+    # ── NOUVEAUX CHAMPS (Limites #1 et #4) ──
+    fitnessLevel: Optional[str] = Field("BEGINNER", description="BEGINNER, INTERMEDIATE, ADVANCED, ATHLETE")
+    avgSleepHours: Optional[float] = Field(7.0, description="Heures de sommeil par nuit", ge=0, le=12)
+    stressLevel: Optional[int] = Field(5, description="Niveau de stress 0-10", ge=0, le=10)
 
 
 class RetrainDataPoint(BaseModel):
@@ -148,6 +191,38 @@ class RetrainData(BaseModel):
 
 
 # ══════════════════════════════════════════════════════════════
+# FONCTIONS UTILITAIRES
+# ══════════════════════════════════════════════════════════════
+
+def get_sleep_multiplier(sleep_hours: float) -> float:
+    """Retourne le multiplicateur de fatigue selon les heures de sommeil"""
+    if sleep_hours < 6.0:
+        return SLEEP_MULTIPLIER["poor"]
+    elif sleep_hours < 7.0:
+        return SLEEP_MULTIPLIER["moderate"]
+    return SLEEP_MULTIPLIER["good"]
+
+
+def get_stress_multiplier(stress_level: int) -> float:
+    """Retourne le multiplicateur de fatigue selon le niveau de stress"""
+    if stress_level >= 7:
+        return STRESS_MULTIPLIER["high"]
+    elif stress_level >= 5:
+        return STRESS_MULTIPLIER["moderate"]
+    return STRESS_MULTIPLIER["low"]
+
+
+def get_fatigue_level_multiplier(level: str) -> float:
+    """Retourne le multiplicateur de fatigue selon le niveau du membre"""
+    return FATIGUE_LEVEL_MULTIPLIER.get(level.upper(), 1.0)
+
+
+def get_injury_level_multiplier(level: str) -> float:
+    """Retourne le multiplicateur de risque selon le niveau du membre"""
+    return INJURY_LEVEL_MULTIPLIER.get(level.upper(), 1.0)
+
+
+# ══════════════════════════════════════════════════════════════
 # ENDPOINTS
 # ══════════════════════════════════════════════════════════════
 
@@ -159,9 +234,17 @@ def health():
             "fatigue": fatigue_model is not None,
             "injury": injury_model is not None,
         },
-        "version": "3.0",
-        "fatigue_features": FATIGUE_FEATURES,
-        "injury_features": INJURY_FEATURES,
+        "version": "3.1",
+        "features": {
+            "fatigue_features": FATIGUE_FEATURES,
+            "injury_features": INJURY_FEATURES,
+        },
+        "multipliers": {
+            "fatigue_level": FATIGUE_LEVEL_MULTIPLIER,
+            "injury_level": INJURY_LEVEL_MULTIPLIER,
+            "sleep": SLEEP_MULTIPLIER,
+            "stress": STRESS_MULTIPLIER,
+        },
         "timestamp": datetime.now().isoformat(),
     }
 
@@ -171,7 +254,9 @@ def predict_fatigue(data: FatigueInput):
     if fatigue_model is None:
         raise HTTPException(status_code=503, detail="Modèle fatigue non disponible")
     
-    logger.info(f"📥 Fatigue - age={data.age}, bmi={data.bmi}, gender={data.gender}, muscleRisk={data.muscleRiskScore}")
+    logger.info(f"📥 Fatigue - age={data.age}, bmi={data.bmi}, gender={data.gender}, "
+                f"muscleRisk={data.muscleRiskScore}, level={data.fitnessLevel}, "
+                f"sleep={data.avgSleepHours}h, stress={data.stressLevel}/10")
     
     try:
         total_duration = data.totalDuration if data.totalDuration else (data.duration + data.cardioDurationMinutes)
@@ -193,16 +278,44 @@ def predict_fatigue(data: FatigueInput):
 
         features = features[FATIGUE_FEATURES]
 
+        # Prédiction de base
         prediction = fatigue_model.predict(features)
         proba = fatigue_model.predict_proba(features)
-        confidence = float(proba.max())
-        proba_fatigued = float(proba[0][1]) if proba.shape[1] > 1 else confidence
+        base_confidence = float(proba.max())
+        base_fatigue_score = float(proba[0][1]) if proba.shape[1] > 1 else base_confidence
+        
+        # ── APPLICATION DES MULTIPLICATEURS (Limites #1 et #4) ──
+        level_multiplier = get_fatigue_level_multiplier(data.fitnessLevel)
+        sleep_multiplier = get_sleep_multiplier(data.avgSleepHours)
+        stress_multiplier = get_stress_multiplier(data.stressLevel)
+        
+        # Facteur de douleur (si painLevel était transmis, mais pas dans ce modèle)
+        pain_multiplier = 1.0
+        
+        # Score final avec multiplicateurs
+        adjusted_fatigue_score = base_fatigue_score * level_multiplier * sleep_multiplier * stress_multiplier * pain_multiplier
+        adjusted_fatigue_score = min(1.0, max(0.0, adjusted_fatigue_score))
+        
+        # Ajuster la prédiction si le score dépasse 0.6
+        is_fatigued = adjusted_fatigue_score > 0.6
+        final_prediction = 1 if is_fatigued else 0
+        
+        # Ajuster la confiance
+        final_confidence = base_confidence
+        if abs(adjusted_fatigue_score - base_fatigue_score) > 0.15:
+            final_confidence = max(0.5, min(0.95, final_confidence * 0.9))
 
         result = {
-            "fatigue": int(prediction[0]),
-            "label": "fatigué" if prediction[0] == 1 else "normal",
-            "confidence": round(confidence, 2),
-            "proba_fatigued": round(proba_fatigued, 2),
+            "fatigue": final_prediction,
+            "label": "fatigué" if final_prediction == 1 else "normal",
+            "confidence": round(final_confidence, 2),
+            "proba_fatigued": round(adjusted_fatigue_score, 2),
+            "multipliers_applied": {
+                "level": level_multiplier,
+                "sleep": sleep_multiplier,
+                "stress": stress_multiplier,
+                "final_score": round(adjusted_fatigue_score, 2)
+            }
         }
         
         logger.info(f"✅ Fatigue résultat: {result['label']} (confiance: {result['confidence']})")
@@ -218,7 +331,9 @@ def predict_injury(data: InjuryInput):
     if injury_model is None:
         raise HTTPException(status_code=503, detail="Modèle blessure non disponible")
     
-    logger.info(f"📥 Injury - age={data.age}, sessions={data.sessionsPerWeek}, muscleRisk={data.muscleRiskScore}")
+    logger.info(f"📥 Injury - age={data.age}, sessions={data.sessionsPerWeek}, "
+                f"muscleRisk={data.muscleRiskScore}, level={data.fitnessLevel}, "
+                f"sleep={data.avgSleepHours}h, stress={data.stressLevel}/10")
     
     try:
         features = pd.DataFrame([{
@@ -241,7 +356,7 @@ def predict_injury(data: InjuryInput):
 
         features = features[INJURY_FEATURES]
 
-        # ── Normalisation (obligatoire : le modèle a été entraîné sur données scalées) ──
+        # Normalisation
         if injury_scaler is not None:
             features_scaled = pd.DataFrame(
                 injury_scaler.transform(features),
@@ -251,16 +366,40 @@ def predict_injury(data: InjuryInput):
             logger.warning("⚠️ Scaler absent — prédiction sur données brutes (résultats potentiellement dégradés)")
             features_scaled = features
 
+        # Prédiction de base
         prediction = injury_model.predict(features_scaled)
         proba = injury_model.predict_proba(features_scaled)
-        confidence = float(proba.max())
-        proba_injured = float(proba[0][1]) if proba.shape[1] > 1 else confidence
+        base_confidence = float(proba.max())
+        base_risk_score = float(proba[0][1]) if proba.shape[1] > 1 else base_confidence
+        
+        # ── APPLICATION DES MULTIPLICATEURS (Limites #1 et #4) ──
+        level_multiplier = get_injury_level_multiplier(data.fitnessLevel)
+        sleep_multiplier = get_sleep_multiplier(data.avgSleepHours)
+        stress_multiplier = get_stress_multiplier(data.stressLevel)
+        
+        # Score final avec multiplicateurs
+        adjusted_risk_score = base_risk_score * level_multiplier * sleep_multiplier * stress_multiplier
+        adjusted_risk_score = min(1.0, max(0.0, adjusted_risk_score))
+        
+        # Ajuster la prédiction
+        is_high_risk = adjusted_risk_score > 0.5
+        final_prediction = 1 if is_high_risk else 0
+        
+        # Niveau de risque textuel
+        risk_level = "ÉLEVÉ" if adjusted_risk_score > 0.7 else "MODÉRÉ" if adjusted_risk_score > 0.4 else "FAIBLE"
 
         result = {
-            "injury_risk": int(prediction[0]),
-            "label": "risque élevé" if prediction[0] == 1 else "risque faible",
-            "confidence": round(confidence, 2),
-            "proba_injured": round(proba_injured, 2),
+            "injury_risk": final_prediction,
+            "label": "risque élevé" if final_prediction == 1 else "risque faible",
+            "risk_level": risk_level,
+            "confidence": round(base_confidence, 2),
+            "proba_injured": round(adjusted_risk_score, 2),
+            "multipliers_applied": {
+                "level": level_multiplier,
+                "sleep": sleep_multiplier,
+                "stress": stress_multiplier,
+                "final_score": round(adjusted_risk_score, 2)
+            }
         }
         
         logger.info(f"✅ Injury résultat: {result['label']} (confiance: {result['confidence']})")
@@ -298,14 +437,12 @@ def _retrain_models():
     """Fonction asynchrone pour réentraîner les modèles"""
     logger.info("🔄 Démarrage du réentraînement asynchrone...")
     
-    # Récupérer tous les fichiers de données
     data_files = list(RETRAIN_DATA_DIR.glob("retrain_data_*.json"))
     
     if not data_files:
         logger.warning("⚠️ Aucune donnée de réentraînement trouvée")
         return
     
-    # Charger toutes les données
     all_data = []
     for file in data_files:
         with open(file, "r", encoding="utf-8") as f:
@@ -314,10 +451,8 @@ def _retrain_models():
     
     logger.info(f"📊 {len(all_data)} échantillons disponibles pour réentraînement")
     
-    # Ici, tu peux implémenter la logique de réentraînement réelle
-    # Exemple : lancer train.py avec les nouvelles données
-    
-    # Pour l'instant, on simule un succès
+    # Ici, implémenter la logique de réentraînement réelle
+    # Pour l'instant, simulation
     logger.info("✅ Réentraînement simulé terminé avec succès")
 
 
@@ -332,21 +467,17 @@ def retrain(data: RetrainData, background_tasks: BackgroundTasks):
     logger.info(f"   Message: {data.message}")
     
     try:
-        # 1. Sauvegarder les données reçues
         saved_file = _save_retrain_data(data)
-        
-        # 2. Déclencher le réentraînement en arrière-plan
         background_tasks.add_task(_retrain_models)
         
-        # 3. Retourner la réponse immédiate
         return {
             "success": True,
-            "modelVersion": f"v3.0.{datetime.now().strftime('%Y%m%d%H%M')}",
+            "modelVersion": f"v3.1.{datetime.now().strftime('%Y%m%d%H%M')}",
             "fatigueAccuracy": 87.5,
             "injuryAccuracy": 82.3,
             "samplesReceived": data.totalSamples,
             "savedFile": str(saved_file),
-            "message": f"Réentraînement déclenché avec {data.totalSamples} feedbacks. Les nouveaux modèles seront disponibles sous quelques minutes."
+            "message": f"Réentraînement déclenché avec {data.totalSamples} feedbacks."
         }
         
     except Exception as e:
@@ -354,15 +485,10 @@ def retrain(data: RetrainData, background_tasks: BackgroundTasks):
         raise HTTPException(status_code=500, detail=f"Retrain error: {str(e)}")
 
 
-# ══════════════════════════════════════════════════════════════
-# ENDPOINT DE STATISTIQUES (optionnel)
-# ══════════════════════════════════════════════════════════════
-
 @app.get("/stats")
 def get_stats():
     """Retourne des statistiques sur le service IA"""
     try:
-        # Compter les fichiers de réentraînement
         retrain_files = list(RETRAIN_DATA_DIR.glob("retrain_data_*.json"))
         
         return {
@@ -371,7 +497,12 @@ def get_stats():
                 "injury": injury_model is not None,
             },
             "retrain_data_files": len(retrain_files),
-            "total_retrain_samples": 0,  # À calculer si besoin
+            "multipliers_config": {
+                "fatigue_level": FATIGUE_LEVEL_MULTIPLIER,
+                "injury_level": INJURY_LEVEL_MULTIPLIER,
+                "sleep": SLEEP_MULTIPLIER,
+                "stress": STRESS_MULTIPLIER,
+            },
             "uptime": datetime.now().isoformat(),
         }
     except Exception as e:

@@ -159,7 +159,7 @@ public class AIController {
         return ResponseEntity.ok(Map.of(
                 "status", "available",
                 "service", "AI Controller + MemberProfile",
-                "version", "3.0"
+                "version", "3.1"
         ));
     }
 
@@ -171,6 +171,9 @@ public class AIController {
         int totalMin = sessions.stream().mapToInt(TrainingSession::getDuration).sum();
         int totalCardio = sessions.stream().mapToInt(TrainingSession::getCardioDurationMinutes).sum();
 
+        String level = profile.getSelfDeclaredLevel() != null ? profile.getSelfDeclaredLevel().name() : "BEGINNER";
+
+        // Recommandations basées sur l'objectif (Limite #11)
         switch (profile.getPrimaryGoal()) {
             case WEIGHT_LOSS -> {
                 if (totalCardio < 90) recs.add("🏃 Objectif perte de poids : visez au moins 150 min de cardio/semaine (vous avez " + totalCardio + " min cette semaine).");
@@ -201,6 +204,15 @@ public class AIController {
                 recs.add("💡 Surveillez de près votre récupération — c'est là que la performance se construit.");
             }
             case GENERAL_FITNESS -> recs.add("💚 Objectif bien-être : continuez votre routine équilibrée — vous êtes sur la bonne voie.");
+        }
+
+        // Recommandations basées sur le niveau (Limite #1)
+        if ("BEGINNER".equals(level)) {
+            recs.add("🟢 Débutant : privilégiez la technique à la charge. Ne cherchez pas l'échec musculaire systématique.");
+            recs.add("💡 Augmentez les charges uniquement quand vous maîtrisez parfaitement le mouvement.");
+        } else if ("ATHLETE".equals(level)) {
+            recs.add("🏆 Athlète confirmé : votre récupération est plus rapide. Vous pouvez entraîner les mêmes muscles 2-3x/semaine.");
+            recs.add("💡 Surveillez les signes de surentraînement fatigue chronique, baisse de performance, troubles du sommeil).");
         }
 
         if (profile.getAvgSleepHours() != null && profile.getAvgSleepHours() < 6.5) {

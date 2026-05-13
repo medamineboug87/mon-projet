@@ -121,23 +121,17 @@ class _AdminExercisesScreenState extends State<AdminExercisesScreen> {
   void _showFormDialog({Map<String, dynamic>? exercise}) {
     final isEdit = exercise != null;
     final nameCtrl = TextEditingController(text: exercise?['name'] ?? '');
-    final setsCtrl = TextEditingController(text: exercise?['sets'] ?? '3');
-    final repsCtrl = TextEditingController(text: exercise?['reps'] ?? '10-12');
     final secondaryCtrl = TextEditingController(
       text: exercise?['secondaryMuscles'] ?? '',
     );
     final descCtrl = TextEditingController(
       text: exercise?['description'] ?? '',
     );
-    final recoveryCtrl = TextEditingController(
-      text: exercise?['recoveryHours']?.toString() ?? '48',
-    );
     final videoCtrl = TextEditingController(text: exercise?['videoUrl'] ?? '');
 
     String selectedMuscle =
         exercise?['muscleName'] ??
         (_selectedMuscle == 'Tous' ? 'Pectoraux' : _selectedMuscle);
-    String selectedDifficulty = exercise?['difficulty'] ?? 'Intermédiaire';
     bool isLoading = false;
 
     showDialog(
@@ -217,51 +211,10 @@ class _AdminExercisesScreenState extends State<AdminExercisesScreen> {
                         ),
                         const SizedBox(height: 12),
 
-                        Row(
-                          children: [
-                            Expanded(
-                              child: _lightField(
-                                setsCtrl,
-                                'Séries',
-                                Icons.repeat_rounded,
-                              ),
-                            ),
-                            const SizedBox(width: 10),
-                            Expanded(
-                              child: _lightField(
-                                repsCtrl,
-                                'Répétitions',
-                                Icons.numbers_rounded,
-                              ),
-                            ),
-                          ],
-                        ),
-                        const SizedBox(height: 12),
-
                         _lightField(
                           secondaryCtrl,
                           'Muscles secondaires',
                           Icons.account_tree_rounded,
-                        ),
-                        const SizedBox(height: 12),
-
-                        _lightField(
-                          recoveryCtrl,
-                          'Récupération (heures)',
-                          Icons.timer_rounded,
-                          isNumber: true,
-                        ),
-                        const SizedBox(height: 12),
-
-                        // Difficulty
-                        _LightDropdown<String>(
-                          value: selectedDifficulty,
-                          label: 'Difficulté',
-                          icon: Icons.bar_chart_rounded,
-                          items: ['Débutant', 'Intermédiaire', 'Avancé'],
-                          onChanged: (v) =>
-                              setDialogState(() => selectedDifficulty = v!),
-                          itemColor: (item) => _difficultyColor(item),
                         ),
                         const SizedBox(height: 12),
 
@@ -379,14 +332,9 @@ class _AdminExercisesScreenState extends State<AdminExercisesScreen> {
                                   final body = jsonEncode({
                                     'name': nameCtrl.text.trim(),
                                     'muscleName': selectedMuscle,
-                                    'sets': setsCtrl.text.trim(),
-                                    'reps': repsCtrl.text.trim(),
                                     'secondaryMuscles': secondaryCtrl.text
                                         .trim(),
                                     'description': descCtrl.text.trim(),
-                                    'difficulty': selectedDifficulty,
-                                    'recoveryHours':
-                                        int.tryParse(recoveryCtrl.text) ?? 48,
                                     'videoUrl': videoUrl.isEmpty
                                         ? null
                                         : videoUrl,
@@ -893,26 +841,6 @@ class _AdminExercisesScreenState extends State<AdminExercisesScreen> {
             ),
           ),
 
-          // ── Stats chips ──
-          Padding(
-            padding: const EdgeInsets.fromLTRB(14, 0, 14, 10),
-            child: Row(
-              children: [
-                _InfoChip('${ex['sets'] ?? '3'} séries', Icons.repeat_rounded),
-                const SizedBox(width: 6),
-                _InfoChip(
-                  '${ex['reps'] ?? '10-12'} reps',
-                  Icons.numbers_rounded,
-                ),
-                const SizedBox(width: 6),
-                _InfoChip(
-                  '${ex['recoveryHours'] ?? 48}h récup',
-                  Icons.timer_rounded,
-                ),
-              ],
-            ),
-          ),
-
           // ── Secondary muscles ──
           if ((ex['secondaryMuscles'] ?? '').isNotEmpty)
             Padding(
@@ -1045,32 +973,6 @@ class _DiffBadge extends StatelessWidget {
           fontSize: 10,
           fontWeight: FontWeight.w700,
         ),
-      ),
-    );
-  }
-}
-
-class _InfoChip extends StatelessWidget {
-  final String label;
-  final IconData icon;
-  const _InfoChip(this.label, this.icon);
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-      decoration: BoxDecoration(
-        color: _kSurf2,
-        borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: _kBorder),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(icon, size: 11, color: _kTextSub),
-          const SizedBox(width: 4),
-          Text(label, style: const TextStyle(color: _kTextSub, fontSize: 10)),
-        ],
       ),
     );
   }
