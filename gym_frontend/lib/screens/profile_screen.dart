@@ -1,6 +1,10 @@
+import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:http/http.dart' as http;
 import '../services/member_service.dart';
+import '../services/auth_service.dart';
+import '../config/api_config.dart';
 import '../providers/member_provider.dart';
 
 // ─── Design tokens light ───
@@ -35,11 +39,10 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
   final _weightController = TextEditingController();
   final _heightController = TextEditingController();
 
-  // ── NOUVEAUX CHAMPS LIMITE 4 : Sommeil & Stress ──
+  // Sommeil & Stress — appartiennent au profil IA (/ai-profile)
   double _avgSleepHours = 7.0;
   int _stressLevel = 5;
 
-  // Variables pour savoir si les valeurs ont changé
   double _originalSleepHours = 7.0;
   int _originalStressLevel = 5;
 
@@ -59,6 +62,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
   }
 
   Future<void> _loadProfile() async {
+    // Charger le profil membre (nom, age, poids, taille)
     final profile = await MemberService.getMemberProfile(widget.memberId);
     if (profile != null && mounted) {
       setState(() {
@@ -66,43 +70,97 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
         _ageController.text = profile['age']?.toString() ?? '';
         _weightController.text = profile['weight']?.toString() ?? '';
         _heightController.text = profile['height']?.toString() ?? '';
-
-        // Charger les valeurs sommeil et stress du profil
-        _avgSleepHours = (profile['avgSleepHours'] as num?)?.toDouble() ?? 7.0;
-        _stressLevel = profile['stressLevel'] as int? ?? 5;
-
-        // Sauvegarder les valeurs originales pour détecter les changements
-        _originalSleepHours = _avgSleepHours;
-        _originalStressLevel = _stressLevel;
       });
+    }
+
+    // Charger le profil IA séparément pour avgSleepHours et stressLevel
+    await _loadAIProfile();
+  }
+
+  Future<void> _loadAIProfile() async {
+    try {
+      final token = await AuthService.getToken();
+      final response = await http
+          .get(
+            Uri.parse(
+              '${ApiConfig.baseUrl}/members/${widget.memberId}/ai-profile',
+            ),
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': 'Bearer $token',
+            },
+          )
+          .timeout(const Duration(seconds: 10));
+
+      if (response.statusCode == 200 && mounted) {
+        final data = jsonDecode(response.body) as Map<String, dynamic>;
+        setState(() {
+          _avgSleepHours = (data['avgSleepHours'] as num?)?.toDouble() ?? 7.0;
+          _stressLevel = data['stressLevel'] as int? ?? 5;
+          _originalSleepHours = _avgSleepHours;
+          _originalStressLevel = _stressLevel;
+        });
+      }
+    } catch (_) {
+      // Silencieux — on garde les valeurs par défaut
     }
   }
 
   Future<void> _saveProfile() async {
-    final updated = {
+    // ── 1. Sauvegarder les données membre : nom, age, poids, taille ──
+    // Endpoint : PUT /members/{id}/profile
+    final memberData = {
       "fullName": _nameController.text,
       "age": int.tryParse(_ageController.text) ?? 0,
       "weight": double.tryParse(_weightController.text) ?? 0,
       "height": double.tryParse(_heightController.text) ?? 0,
-      // ── NOUVEAUX CHAMPS LIMITE 4 ──
-      "avgSleepHours": _avgSleepHours,
-      "stressLevel": _stressLevel,
     };
 
-    final success = await MemberService.updateMemberProfile(
+    final memberSuccess = await MemberService.updateMemberProfile(
       widget.memberId,
-      updated,
+      memberData,
     );
 
-    if (success && mounted) {
-      // Invalider le cache
+    // ── 2. Sauvegarder les données IA : sommeil et stress ──
+    // Endpoint : PUT /members/{id}/ai-profile
+    bool aiSuccess = false;
+    try {
+      final token = await AuthService.getToken();
+      final response = await http
+          .put(
+            Uri.parse(
+              '${ApiConfig.baseUrl}/members/${widget.memberId}/ai-profile',
+            ),
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': 'Bearer $token',
+            },
+            body: jsonEncode({
+              'avgSleepHours': _avgSleepHours,
+              'stressLevel': _stressLevel,
+            }),
+          )
+          .timeout(const Duration(seconds: 10));
+
+      aiSuccess = response.statusCode == 200;
+    } catch (_) {
+      // On ne bloque pas si le profil IA échoue
+    }
+
+    if (!mounted) return;
+
+    if (memberSuccess) {
       ref.invalidate(memberProvider(widget.memberId));
       ref.invalidate(memberProfileProvider(widget.memberId));
 
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Profil mis à jour !'),
-          backgroundColor: _kGreen,
+        SnackBar(
+          content: Text(
+            aiSuccess
+                ? 'Profil mis à jour !'
+                : 'Profil mis à jour (données IA non sauvegardées)',
+          ),
+          backgroundColor: aiSuccess ? _kGreen : _kOrange,
         ),
       );
       setState(() {
@@ -110,6 +168,13 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
         _originalSleepHours = _avgSleepHours;
         _originalStressLevel = _stressLevel;
       });
+    } else {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Erreur lors de la mise à jour'),
+          backgroundColor: _kRed,
+        ),
+      );
     }
   }
 
@@ -150,7 +215,6 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
             icon: Icon(_isEditing ? Icons.close : Icons.edit, color: _kText),
             onPressed: () {
               if (_isEditing) {
-                // Annuler les modifications
                 setState(() {
                   _avgSleepHours = _originalSleepHours;
                   _stressLevel = _originalStressLevel;
@@ -197,7 +261,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
               ),
               const SizedBox(height: 32),
               ElevatedButton(
-                onPressed: () => _loadProfile(),
+                onPressed: _loadProfile,
                 style: ElevatedButton.styleFrom(backgroundColor: _kGreen),
                 child: const Text('Réessayer'),
               ),
@@ -212,7 +276,6 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
     final bmi = profile?['bmi'];
     final bmiCategory = profile?['bmiCategory'] ?? '';
 
-    // Définir bmiColor
     Color bmiColor = _kGreen;
     if (bmiCategory == 'Surpoids' || bmiCategory == 'Insuffisance pondérale') {
       bmiColor = _kOrange;
@@ -220,7 +283,6 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
       bmiColor = _kRed;
     }
 
-    // Couleur pour la qualité du sommeil et stress
     Color sleepColor = _avgSleepHours >= 7 ? _kGreen : _kOrange;
     Color stressColor = _stressLevel <= 4
         ? _kGreen
@@ -254,8 +316,6 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
           style: const TextStyle(color: _kTextSub),
         ),
         const SizedBox(height: 32),
-
-        // ── Stats (Age, Poids, Taille) ──
         Row(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
@@ -282,8 +342,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
           ],
         ),
         const SizedBox(height: 24),
-
-        // ── NOUVEAU : Ligne Sommeil et Stress ──
+        // Sommeil et Stress (lus depuis le profil IA)
         Container(
           padding: const EdgeInsets.all(16),
           decoration: BoxDecoration(
@@ -306,9 +365,9 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                         fontWeight: FontWeight.bold,
                       ),
                     ),
-                    Text(
+                    const Text(
                       'Sommeil/nuit',
-                      style: const TextStyle(color: _kTextSub, fontSize: 11),
+                      style: TextStyle(color: _kTextSub, fontSize: 11),
                     ),
                     if (_avgSleepHours < 7)
                       Container(
@@ -351,9 +410,9 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                         fontWeight: FontWeight.bold,
                       ),
                     ),
-                    Text(
+                    const Text(
                       'Stress',
-                      style: const TextStyle(color: _kTextSub, fontSize: 11),
+                      style: TextStyle(color: _kTextSub, fontSize: 11),
                     ),
                     if (_stressLevel >= 7)
                       Container(
@@ -382,8 +441,6 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
           ),
         ),
         const SizedBox(height: 24),
-
-        // BMI Card
         if (bmi != null)
           Container(
             width: double.infinity,
@@ -451,13 +508,11 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
               ],
             ),
           ),
-
         const SizedBox(height: 24),
         Text(
           'Membre depuis : ${profile?['registrationDate'] ?? 'N/A'}',
           style: const TextStyle(color: _kTextSub),
         ),
-
         const SizedBox(height: 32),
         SizedBox(
           width: double.infinity,
@@ -482,7 +537,6 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
   }
 
   Widget _buildEditForm(Map<String, dynamic>? profile) {
-    // Couleurs dynamiques
     Color sleepColor = _avgSleepHours >= 7 ? _kGreen : _kOrange;
     Color stressColor = _stressLevel <= 4
         ? _kGreen
@@ -492,6 +546,14 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         const SizedBox(height: 20),
+
+        // ── Données membre → /members/{id}/profile ──
+        _buildSectionHeader(
+          'Informations personnelles',
+          Icons.person_rounded,
+          _kBlue,
+        ),
+        const SizedBox(height: 12),
         _buildEditField('Nom complet', _nameController, Icons.person),
         const SizedBox(height: 16),
         _buildEditField('Age', _ageController, Icons.cake, isNumber: true),
@@ -509,9 +571,22 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
           Icons.height,
           isNumber: true,
         ),
-        const SizedBox(height: 24),
+        const SizedBox(height: 28),
 
-        // ── NOUVEAU : Sommeil (Slider 0-12) ──
+        // ── Données IA → /members/{id}/ai-profile ──
+        _buildSectionHeader(
+          'Récupération & Bien-être',
+          Icons.auto_awesome_rounded,
+          _kGreen,
+        ),
+        const SizedBox(height: 4),
+        const Text(
+          'Ces données améliorent les prédictions IA',
+          style: TextStyle(color: _kTextSub, fontSize: 11),
+        ),
+        const SizedBox(height: 16),
+
+        // Sommeil
         const Text(
           '💤 Heures de sommeil (moyenne par nuit)',
           style: TextStyle(
@@ -573,7 +648,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
         ),
         const SizedBox(height: 24),
 
-        // ── NOUVEAU : Stress (Slider 0-10) ──
+        // Stress
         const Text(
           '🧘 Niveau de stress',
           style: TextStyle(
@@ -684,6 +759,31 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
               ),
             ),
           ],
+        ),
+      ],
+    );
+  }
+
+  Widget _buildSectionHeader(String title, IconData icon, Color color) {
+    return Row(
+      children: [
+        Container(
+          width: 32,
+          height: 32,
+          decoration: BoxDecoration(
+            color: color.withValues(alpha: 0.12),
+            borderRadius: BorderRadius.circular(10),
+          ),
+          child: Icon(icon, color: color, size: 16),
+        ),
+        const SizedBox(width: 10),
+        Text(
+          title,
+          style: TextStyle(
+            color: _kText,
+            fontWeight: FontWeight.w800,
+            fontSize: 15,
+          ),
         ),
       ],
     );
