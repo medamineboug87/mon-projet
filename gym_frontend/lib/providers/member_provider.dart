@@ -1,3 +1,5 @@
+// lib/providers/member_provider.dart
+
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../services/member_service.dart';
 
@@ -13,3 +15,6 @@ final memberProfileProvider = FutureProvider.family<Map<String, dynamic>?, int>(
     return await MemberService.getMemberProfile(memberId);
   },
 );
+
+// ✅ AJOUTER CE PROVIDER
+final memberIdProvider = StateProvider<int>((ref) => 0);
