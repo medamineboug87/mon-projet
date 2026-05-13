@@ -3,6 +3,7 @@ import 'package:http/http.dart' as http;
 import 'package:flutter/material.dart';
 import '../services/member_service.dart';
 import '../services/auth_service.dart';
+import '../services/member_profile_service.dart';
 import '../widgets/session/session_mode_toggle.dart';
 import '../widgets/session/session_body_map.dart';
 import '../widgets/session/session_cardio_section.dart';
@@ -14,6 +15,7 @@ import '../widgets/exercise_section/exercise_form_dialog.dart';
 import '../widgets/exercise_section/exercise_picker_sheet.dart';
 import '../config/api_config.dart';
 import '../models/muscle_zone.dart';
+import 'ai_profile_screen.dart';
 
 // ─── Design tokens ───
 const Color _kBg = Color(0xFFF4F6FA);
@@ -23,6 +25,7 @@ const Color _kGreen = Color(0xFF00897B);
 const Color _kBlue = Color(0xFF1976D2);
 const Color _kOrange = Color(0xFFF57C00);
 const Color _kRed = Color(0xFFE53935);
+const Color _kOrangeL = Color(0xFFFFF3E0);
 const Color _kPurple = Color(0xFF7B1FA2);
 const Color _kText = Color(0xFF1A2340);
 const Color _kTextSub = Color(0xFF6B7A99);
@@ -62,6 +65,10 @@ class _NewSessionScreenState extends State<NewSessionScreen> {
   bool _useDetailedExercises = false;
   List<ExerciseEntry> _exercises = [];
 
+  // Profil IA
+  bool _profileLoaded = false;
+  bool _profileComplete = false;
+
   // Muscles zones pour le body map
   final List<MuscleZone> _frontMuscles = const [
     MuscleZone('Pectoraux', Rect.fromLTWH(115, 108, 120, 58)),
@@ -87,11 +94,34 @@ class _NewSessionScreenState extends State<NewSessionScreen> {
   ];
 
   @override
+  void initState() {
+    super.initState();
+    _checkProfile();
+  }
+
+  @override
   void dispose() {
     _durationCtrl.dispose();
     _weightCtrl.dispose();
     _cardioDurCtrl.dispose();
     super.dispose();
+  }
+
+  Future<void> _checkProfile() async {
+    try {
+      final profile = await MemberProfileService.getProfile(widget.memberId);
+      if (mounted) {
+        setState(() {
+          _profileLoaded = true;
+          _profileComplete = profile != null && profile['isComplete'] == true;
+        });
+      }
+    } catch (e) {
+      setState(() {
+        _profileLoaded = true;
+        _profileComplete = false;
+      });
+    }
   }
 
   double get _effectiveWeightFromExercises {
@@ -331,6 +361,65 @@ class _NewSessionScreenState extends State<NewSessionScreen> {
     setState(() => _exercises.removeAt(index));
   }
 
+  Widget _buildProfileWarning() {
+    if (!_profileLoaded) return const SizedBox.shrink();
+    if (_profileComplete) return const SizedBox.shrink();
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 16),
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: _kOrangeL,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: _kOrange.withValues(alpha: 0.3)),
+      ),
+      child: Row(
+        children: [
+          const Icon(Icons.warning_amber_rounded, color: _kOrange, size: 18),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text(
+                  '⚠️ Profil IA incomplet',
+                  style: TextStyle(
+                    color: _kOrange,
+                    fontWeight: FontWeight.w700,
+                    fontSize: 13,
+                  ),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  'Pour des prédictions plus précises, complétez votre profil IA (objectif, niveau, sommeil, stress).',
+                  style: TextStyle(
+                    color: _kOrange.withValues(alpha: 0.8),
+                    fontSize: 11,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          TextButton(
+            onPressed: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (_) => AIProfileScreen(memberId: widget.memberId),
+                ),
+              ).then((_) => _checkProfile());
+            },
+            style: TextButton.styleFrom(foregroundColor: _kOrange),
+            child: const Text(
+              'Compléter',
+              style: TextStyle(fontWeight: FontWeight.w700),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -399,6 +488,8 @@ class _NewSessionScreenState extends State<NewSessionScreen> {
               onWarmupChanged: (v) => setState(() => _warmupDone = v),
             ),
             const SizedBox(height: 24),
+            _buildProfileWarning(),
+            const SizedBox(height: 8),
             _buildSubmitButton(),
             if (_prediction != null) ...[
               const SizedBox(height: 20),
