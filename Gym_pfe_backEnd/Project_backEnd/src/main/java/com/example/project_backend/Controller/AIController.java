@@ -103,8 +103,23 @@ public class AIController {
             List<TrainingSession> previousSessions = trainingSessionService.getSessionsLastWeek(memberId);
 
             Map<String, Object> result = new HashMap<>();
-            result.put("fatigue", aiService.predictFatigueWithAI(member, previousSessions));
-            result.put("injury", aiService.predictInjuryWithAI(member, previousSessions));
+
+            // Récupérer les prédictions
+            Map<String, Object> fatigue = aiService.predictFatigueWithAI(member, previousSessions);
+            Map<String, Object> injury = aiService.predictInjuryWithAI(member, previousSessions);
+
+            // ═══════════════════════════════════════════════════════════
+            // Compatibilité des clés (snake_case vs camelCase)
+            // ═══════════════════════════════════════════════════════════
+            if (injury.containsKey("risk_level") && !injury.containsKey("riskLevel")) {
+                injury.put("riskLevel", injury.get("risk_level"));
+            }
+            if (fatigue.containsKey("proba_fatigued") && !fatigue.containsKey("probaFatigued")) {
+                fatigue.put("probaFatigued", fatigue.get("proba_fatigued"));
+            }
+
+            result.put("fatigue", fatigue);
+            result.put("injury", injury);
             result.put("overload", aiService.analyzeOverload(member, lastSession, previousSessions));
             result.put("memberId", memberId);
             result.put("sessionId", sessionId);
@@ -159,7 +174,7 @@ public class AIController {
         return ResponseEntity.ok(Map.of(
                 "status", "available",
                 "service", "AI Controller + MemberProfile",
-                "version", "3.1"
+                "version", "3.4"
         ));
     }
 

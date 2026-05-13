@@ -142,4 +142,21 @@ public class MemberController {
         }
         return profile;
     }
+    // Ajouter cette méthode dans MemberController.java
+
+    @GetMapping("/coach/{coachId}")
+    public ResponseEntity<?> getMembersByCoach(@PathVariable Long coachId) {
+        try {
+            // Récupérer tous les membres
+            List<Member> allMembers = memberService.getAllMembers();
+
+            // TODO: Filtrer par coachId (à adapter selon ta logique de relation coach-membre)
+            // Pour l'instant, retourne tous les membres
+            // Idéalement, ajouter un champ coachId dans Member ou une table de relation
+
+            return ResponseEntity.ok(allMembers);
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
+        }
+    }
 }

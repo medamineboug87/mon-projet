@@ -25,7 +25,9 @@ class SessionPredictionCard extends StatelessWidget {
     final overload = prediction['overload'];
     final fatigueLbl = fatigue?['label'] ?? 'N/A';
     final injuryLbl = injury?['label'] ?? 'N/A';
-    final riskLevel = overload?['riskLevel'] ?? 'NORMAL';
+    // Support snake_case (risk_level) et camelCase (riskLevel)
+    final riskLevel =
+        overload?['riskLevel'] ?? overload?['risk_level'] ?? 'NORMAL';
     final warnings = (overload?['warnings'] as List?)?.cast<String>() ?? [];
     final recs = (overload?['recommendations'] as List?)?.cast<String>() ?? [];
     final exerciseCount = fatigue?['exerciseCount'] ?? 0;
@@ -169,6 +171,7 @@ class SessionPredictionCard extends StatelessWidget {
             value: injuryLbl,
             confidence: (injury?['confidence'] as num?)?.toDouble() ?? 0,
             isWarning: injuryLbl.toLowerCase().contains('élevé'),
+            isModerate: injuryLbl.toLowerCase().contains('modéré'),
           ),
         ),
       ],
@@ -332,6 +335,7 @@ class _PredCard extends StatelessWidget {
   final String label, value;
   final double confidence;
   final bool isWarning;
+  final bool isModerate;
 
   const _PredCard({
     required this.icon,
@@ -339,11 +343,21 @@ class _PredCard extends StatelessWidget {
     required this.value,
     required this.confidence,
     required this.isWarning,
+    this.isModerate = false,
   });
 
   @override
   Widget build(BuildContext context) {
-    final color = isWarning ? _kRed : _kGreen;
+    // Gestion des 3 niveaux de couleur
+    Color color;
+    if (isWarning) {
+      color = _kRed;
+    } else if (isModerate) {
+      color = _kOrange;
+    } else {
+      color = _kGreen;
+    }
+
     return Container(
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(

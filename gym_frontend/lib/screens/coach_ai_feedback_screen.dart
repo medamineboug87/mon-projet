@@ -4,9 +4,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../services/coach_ai_feedback_service.dart';
 import '../providers/auth_provider.dart';
-import '../providers/coach_provider.dart';
 
-// ─── Design tokens (cohérents avec ton projet) ───
+// ─── Design tokens ───
 const Color _kBg = Color(0xFFF4F6FA);
 const Color _kSurface = Color(0xFFFFFFFF);
 const Color _kSurf2 = Color(0xFFEEF1F8);
@@ -64,9 +63,11 @@ class _CoachAIFeedbackScreenState extends ConsumerState<CoachAIFeedbackScreen>
       // Charger les statistiques globales
       final stats = await CoachAIFeedbackService.getGlobalAccuracyStats();
       // Charger les statistiques par membre
-      final memberStats = await CoachAIFeedbackService.getMembersAccuracyStats();
+      final memberStats =
+          await CoachAIFeedbackService.getMembersAccuracyStats();
       // Charger les feedbacks récents par membre
-      final feedbacks = await CoachAIFeedbackService.getRecentFeedbacksByMember();
+      final feedbacks =
+          await CoachAIFeedbackService.getRecentFeedbacksByMember();
 
       if (mounted) {
         setState(() {
@@ -121,10 +122,8 @@ class _CoachAIFeedbackScreenState extends ConsumerState<CoachAIFeedbackScreen>
             ? _buildErrorWidget()
             : Column(
                 children: [
-                  // Stats globales
                   _buildGlobalStatsCard(),
                   const SizedBox(height: 12),
-                  // TabBar
                   Container(
                     color: _kSurface,
                     child: TabBar(
@@ -226,11 +225,17 @@ class _CoachAIFeedbackScreenState extends ConsumerState<CoachAIFeedbackScreen>
                 decoration: BoxDecoration(
                   color: qualityColor.withValues(alpha: 0.12),
                   borderRadius: BorderRadius.circular(12),
-                  border: Border.all(color: qualityColor.withValues(alpha: 0.3)),
+                  border: Border.all(
+                    color: qualityColor.withValues(alpha: 0.3),
+                  ),
                 ),
                 child: Text(
                   qualityLabel,
-                  style: TextStyle(color: qualityColor, fontSize: 10, fontWeight: FontWeight.w800),
+                  style: TextStyle(
+                    color: qualityColor,
+                    fontSize: 10,
+                    fontWeight: FontWeight.w800,
+                  ),
                 ),
               ),
             ],
@@ -273,24 +278,39 @@ class _CoachAIFeedbackScreenState extends ConsumerState<CoachAIFeedbackScreen>
               ),
               child: Row(
                 children: [
-                  const Icon(Icons.psychology_rounded, color: _kGreen, size: 16),
+                  const Icon(
+                    Icons.psychology_rounded,
+                    color: _kGreen,
+                    size: 16,
+                  ),
                   const SizedBox(width: 8),
                   Expanded(
                     child: Text(
                       '$pendingFeedbacks feedbacks prêts pour le réentraînement',
-                      style: const TextStyle(color: _kGreen, fontSize: 12, fontWeight: FontWeight.w600),
+                      style: const TextStyle(
+                        color: _kGreen,
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600,
+                      ),
                     ),
                   ),
                   if (pendingFeedbacks >= 10)
                     Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 8,
+                        vertical: 3,
+                      ),
                       decoration: BoxDecoration(
                         color: _kGreen,
                         borderRadius: BorderRadius.circular(12),
                       ),
                       child: const Text(
                         'Prêt',
-                        style: TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.bold),
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontSize: 10,
+                          fontWeight: FontWeight.bold,
+                        ),
                       ),
                     ),
                 ],
@@ -301,7 +321,11 @@ class _CoachAIFeedbackScreenState extends ConsumerState<CoachAIFeedbackScreen>
     );
   }
 
-  Widget _buildStatChip({required String label, required String value, required Color color}) {
+  Widget _buildStatChip({
+    required String label,
+    required String value,
+    required Color color,
+  }) {
     return Container(
       padding: const EdgeInsets.symmetric(vertical: 10),
       decoration: BoxDecoration(
@@ -320,10 +344,7 @@ class _CoachAIFeedbackScreenState extends ConsumerState<CoachAIFeedbackScreen>
             ),
           ),
           const SizedBox(height: 2),
-          Text(
-            label,
-            style: const TextStyle(color: _kTextSub, fontSize: 11),
-          ),
+          Text(label, style: const TextStyle(color: _kTextSub, fontSize: 11)),
         ],
       ),
     );
@@ -381,7 +402,11 @@ class _CoachAIFeedbackScreenState extends ConsumerState<CoachAIFeedbackScreen>
                     color: _kGreenL,
                     borderRadius: BorderRadius.circular(12),
                   ),
-                  child: const Icon(Icons.person_rounded, color: _kGreen, size: 20),
+                  child: const Icon(
+                    Icons.person_rounded,
+                    color: _kGreen,
+                    size: 20,
+                  ),
                 ),
                 const SizedBox(width: 12),
                 Expanded(
@@ -404,9 +429,17 @@ class _CoachAIFeedbackScreenState extends ConsumerState<CoachAIFeedbackScreen>
                     ],
                   ),
                 ),
-                _buildMiniStat('F', fatigueAcc, fatigueAcc >= 70 ? _kGreen : _kOrange),
+                _buildMiniStat(
+                  'F',
+                  fatigueAcc,
+                  fatigueAcc >= 70 ? _kGreen : _kOrange,
+                ),
                 const SizedBox(width: 8),
-                _buildMiniStat('B', injuryAcc, injuryAcc >= 70 ? _kGreen : _kOrange),
+                _buildMiniStat(
+                  'B',
+                  injuryAcc,
+                  injuryAcc >= 70 ? _kGreen : _kOrange,
+                ),
                 if (avgRating > 0) ...[
                   const SizedBox(width: 8),
                   Container(
@@ -419,7 +452,11 @@ class _CoachAIFeedbackScreenState extends ConsumerState<CoachAIFeedbackScreen>
                     child: Center(
                       child: Text(
                         avgRating.toStringAsFixed(1),
-                        style: const TextStyle(color: _kBlue, fontWeight: FontWeight.bold, fontSize: 14),
+                        style: const TextStyle(
+                          color: _kBlue,
+                          fontWeight: FontWeight.bold,
+                          fontSize: 14,
+                        ),
                       ),
                     ),
                   ),
@@ -431,8 +468,11 @@ class _CoachAIFeedbackScreenState extends ConsumerState<CoachAIFeedbackScreen>
               const Divider(color: _kBorder, height: 1),
               const SizedBox(height: 8),
               if (_memberFeedbacks.containsKey(memberId))
-                ..._memberFeedbacks[memberId]!.take(5).map((fb) => _buildFeedbackItem(fb, memberName)),
-              if (_memberFeedbacks.containsKey(memberId) && _memberFeedbacks[memberId]!.length > 5)
+                ..._memberFeedbacks[memberId]!
+                    .take(5)
+                    .map((fb) => _buildFeedbackItem(fb, memberName)),
+              if (_memberFeedbacks.containsKey(memberId) &&
+                  _memberFeedbacks[memberId]!.length > 5)
                 Padding(
                   padding: const EdgeInsets.only(top: 8),
                   child: Text(
@@ -469,12 +509,13 @@ class _CoachAIFeedbackScreenState extends ConsumerState<CoachAIFeedbackScreen>
         children: [
           Text(
             value.toStringAsFixed(0),
-            style: TextStyle(color: color, fontWeight: FontWeight.bold, fontSize: 14),
+            style: TextStyle(
+              color: color,
+              fontWeight: FontWeight.bold,
+              fontSize: 14,
+            ),
           ),
-          Text(
-            label,
-            style: const TextStyle(color: _kTextSub, fontSize: 10),
-          ),
+          Text(label, style: const TextStyle(color: _kTextSub, fontSize: 10)),
         ],
       ),
     );
@@ -505,7 +546,9 @@ class _CoachAIFeedbackScreenState extends ConsumerState<CoachAIFeedbackScreen>
                 width: 6,
                 height: 6,
                 decoration: BoxDecoration(
-                  color: fatigueCorrect == true && injuryCorrect == true ? _kGreen : _kOrange,
+                  color: fatigueCorrect == true && injuryCorrect == true
+                      ? _kGreen
+                      : _kOrange,
                   shape: BoxShape.circle,
                 ),
               ),
@@ -520,14 +563,21 @@ class _CoachAIFeedbackScreenState extends ConsumerState<CoachAIFeedbackScreen>
               ),
               if (rating != null)
                 Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 6,
+                    vertical: 2,
+                  ),
                   decoration: BoxDecoration(
                     color: _kOrangeL,
                     borderRadius: BorderRadius.circular(8),
                   ),
                   child: Text(
                     '⭐ $rating/5',
-                    style: const TextStyle(color: _kOrange, fontSize: 10, fontWeight: FontWeight.w600),
+                    style: const TextStyle(
+                      color: _kOrange,
+                      fontSize: 10,
+                      fontWeight: FontWeight.w600,
+                    ),
                   ),
                 ),
             ],
@@ -544,7 +594,11 @@ class _CoachAIFeedbackScreenState extends ConsumerState<CoachAIFeedbackScreen>
             const SizedBox(height: 6),
             Text(
               comment,
-              style: const TextStyle(color: _kTextSub, fontSize: 11, fontStyle: FontStyle.italic),
+              style: const TextStyle(
+                color: _kTextSub,
+                fontSize: 11,
+                fontStyle: FontStyle.italic,
+              ),
               maxLines: 2,
               overflow: TextOverflow.ellipsis,
             ),
@@ -563,7 +617,9 @@ class _CoachAIFeedbackScreenState extends ConsumerState<CoachAIFeedbackScreen>
       decoration: BoxDecoration(
         color: (isOk ? _kGreen : _kRed).withValues(alpha: 0.12),
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: (isOk ? _kGreen : _kRed).withValues(alpha: 0.3)),
+        border: Border.all(
+          color: (isOk ? _kGreen : _kRed).withValues(alpha: 0.3),
+        ),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
@@ -594,8 +650,12 @@ class _CoachAIFeedbackScreenState extends ConsumerState<CoachAIFeedbackScreen>
       allFeedbacks.addAll(entry.value);
     }
     allFeedbacks.sort((a, b) {
-      final dateA = a['createdAt'] != null ? DateTime.tryParse(a['createdAt'].toString()) : null;
-      final dateB = b['createdAt'] != null ? DateTime.tryParse(b['createdAt'].toString()) : null;
+      final dateA = a['createdAt'] != null
+          ? DateTime.tryParse(a['createdAt'].toString())
+          : null;
+      final dateB = b['createdAt'] != null
+          ? DateTime.tryParse(b['createdAt'].toString())
+          : null;
       if (dateA == null && dateB == null) return 0;
       if (dateA == null) return 1;
       if (dateB == null) return -1;
@@ -652,7 +712,11 @@ class _CoachAIFeedbackScreenState extends ConsumerState<CoachAIFeedbackScreen>
                       color: _kGreenL,
                       borderRadius: BorderRadius.circular(10),
                     ),
-                    child: const Icon(Icons.person_rounded, color: _kGreen, size: 18),
+                    child: const Icon(
+                      Icons.person_rounded,
+                      color: _kGreen,
+                      size: 18,
+                    ),
                   ),
                   const SizedBox(width: 10),
                   Expanded(
@@ -670,21 +734,31 @@ class _CoachAIFeedbackScreenState extends ConsumerState<CoachAIFeedbackScreen>
                         if (createdAt != null)
                           Text(
                             '${createdAt.day}/${createdAt.month}/${createdAt.year}',
-                            style: const TextStyle(color: _kTextSub, fontSize: 10),
+                            style: const TextStyle(
+                              color: _kTextSub,
+                              fontSize: 10,
+                            ),
                           ),
                       ],
                     ),
                   ),
                   if (rating != null)
                     Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 8,
+                        vertical: 3,
+                      ),
                       decoration: BoxDecoration(
                         color: _kOrangeL,
                         borderRadius: BorderRadius.circular(10),
                       ),
                       child: Text(
                         '⭐ $rating/5',
-                        style: const TextStyle(color: _kOrange, fontSize: 11, fontWeight: FontWeight.w600),
+                        style: const TextStyle(
+                          color: _kOrange,
+                          fontSize: 11,
+                          fontWeight: FontWeight.w600,
+                        ),
                       ),
                     ),
                 ],

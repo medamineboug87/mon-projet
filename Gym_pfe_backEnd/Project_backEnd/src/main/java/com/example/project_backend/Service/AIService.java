@@ -82,7 +82,7 @@ public class AIService {
     }
 
     // ═══════════════════════════════════════════════════════════════
-    // PRÉDICTION FATIGUE AVEC APPEL PYTHON (Problème #1)
+    // PRÉDICTION FATIGUE AVEC APPEL PYTHON
     // ═══════════════════════════════════════════════════════════════
 
     public Map<String, Object> predictFatigueWithAI(Member member, List<TrainingSession> sessions) {
@@ -120,7 +120,7 @@ public class AIService {
                     .bodyValue(request)
                     .retrieve()
                     .bodyToMono(Map.class)
-                    .timeout(Duration.ofSeconds(5))
+                    .timeout(Duration.ofSeconds(15))
                     .block();
 
             if (response != null) {
@@ -189,12 +189,17 @@ public class AIService {
         result.put("effectiveWeightUsed", effectiveWeight);
         result.put("muscleRiskSource", exerciseCount > 0 ? "EXERCICES_RÉELS" : "GLOBAL");
         result.put("fitnessLevel", fitnessLevel);
+        result.put("fatigueMultipliers", Map.of(
+                "level", levelMultiplier,
+                "sleep", sleepMultiplier,
+                "stress", stressMultiplier
+        ));
 
         return result;
     }
 
     // ═══════════════════════════════════════════════════════════════
-    // PRÉDICTION BLESSURE AVEC APPEL PYTHON (Problème #1 et #2)
+    // PRÉDICTION BLESSURE AVEC APPEL PYTHON
     // ═══════════════════════════════════════════════════════════════
 
     public Map<String, Object> predictInjuryWithAI(Member member, List<TrainingSession> sessions) {
@@ -202,19 +207,19 @@ public class AIService {
             MemberProfile profile = memberProfileRepository.findByMemberId(member.getId()).orElse(null);
 
             Map<String, Object> request = new HashMap<>();
-            request.put("age", member.getAge());
-            request.put("trainingIntensity", calculateAverageIntensity(sessions));
-            request.put("trainingHoursPerWeek", calculateTrainingHoursPerWeek(sessions));
-            request.put("recoveryDaysPerWeek", calculateRecoveryDays(sessions));
-            request.put("fatigueScore", calculateFatigueScore(member, sessions));
-            request.put("loadBalanceScore", calculateLoadBalanceScore(sessions));
-            request.put("aclRiskScore", calculateACLRiskScore(member, sessions));
-            request.put("weightLifted", getAverageWeightLifted(sessions));
-            request.put("sessionsPerWeek", sessions.size());
-            request.put("hasCardio", hasCardioInSessions(sessions) ? 1 : 0);
-            request.put("cardioDuration", getAverageCardioDuration(sessions));
-            request.put("cardioIntensity", getAverageCardioIntensity(sessions));
-            request.put("muscleRiskScore", getAverageMuscleRiskScore(sessions));
+            request.put("Age", member.getAge());
+            request.put("Training_Intensity", calculateAverageIntensity(sessions));
+            request.put("Training_Hours_Per_Week", calculateTrainingHoursPerWeek(sessions));
+            request.put("Recovery_Days_Per_Week", calculateRecoveryDays(sessions));
+            request.put("Fatigue_Score", calculateFatigueScore(member, sessions));
+            request.put("Load_Balance_Score", calculateLoadBalanceScore(sessions));
+            request.put("ACL_Risk_Score", calculateACLRiskScore(member, sessions));
+            request.put("WeightLiftedNorm", getAverageWeightLifted(sessions));
+            request.put("SessionsPerWeek", sessions.size());
+            request.put("HasCardio", hasCardioInSessions(sessions) ? 1 : 0);
+            request.put("CardioDuration", getAverageCardioDuration(sessions));
+            request.put("CardioIntensity", getAverageCardioIntensity(sessions));
+            request.put("MuscleRiskScore", getAverageMuscleRiskScore(sessions));
             request.put("Gender", "MALE".equalsIgnoreCase(member.getGender()) ? 1 : 0);
             request.put("BMI", calculateBMI(member));
             request.put("fitnessLevel", profile != null && profile.getSelfDeclaredLevel() != null
@@ -231,7 +236,7 @@ public class AIService {
                     .bodyValue(request)
                     .retrieve()
                     .bodyToMono(Map.class)
-                    .timeout(Duration.ofSeconds(5))
+                    .timeout(Duration.ofSeconds(15))
                     .block();
 
             if (response != null) {
@@ -255,6 +260,9 @@ public class AIService {
             result.put("label", "risque faible");
             result.put("riskLevel", "FAIBLE");
             result.put("confidence", 0.8);
+            result.put("injury_risk", 0);
+            result.put("risk_level", "FAIBLE");
+            result.put("proba_injured", 0.25);
             return result;
         }
 
@@ -309,6 +317,9 @@ public class AIService {
         result.put("confidence", Math.min(0.9, 0.5 + injuryRisk));
         result.put("muscleImbalance", imbalanceRisk);
         result.put("muscleRecovery", recoveryRisk);
+        result.put("injury_risk", injuryRisk > 0.5 ? 1 : 0);
+        result.put("risk_level", riskLevel);
+        result.put("proba_injured", injuryRisk);
 
         return result;
     }
@@ -390,9 +401,6 @@ public class AIService {
         double totalVolume = getEffectiveTotalVolume(lastSession);
         analysis.put("totalVolumeSessions", Math.round(totalVolume));
 
-        // ═══════════════════════════════════════════════════════════
-        // AJOUTS pour corriger l'affichage Flutter (Problème #4)
-        // ═══════════════════════════════════════════════════════════
         int sessionCount = previousSessions != null ? previousSessions.size() + 1 : 1;
         int totalMinutes = (previousSessions != null ? previousSessions.stream().mapToInt(TrainingSession::getDuration).sum() : 0)
                 + (lastSession != null ? lastSession.getDuration() : 0);
@@ -409,7 +417,7 @@ public class AIService {
     }
 
     // ═══════════════════════════════════════════════════════════════
-    // PROGRESSION DES CHARGES
+    // PROGRESSION DES CHARGES PAR EXERCICE
     // ═══════════════════════════════════════════════════════════════
 
     public Map<String, Object> calculateExerciseProgressions(Member member, TrainingSession lastSession) {
@@ -515,7 +523,7 @@ public class AIService {
     }
 
     // ═══════════════════════════════════════════════════════════════
-    // MÉTHODES DE CALCUL (Problème #2)
+    // MÉTHODES DE CALCUL
     // ═══════════════════════════════════════════════════════════════
 
     private double calculateBMI(Member member) {

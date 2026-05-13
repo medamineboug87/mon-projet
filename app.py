@@ -1,6 +1,6 @@
 """
 app.py — Service IA pour Smart Gym
-Version 3.3 - avec corrections complètes
+Version 3.4 - avec ACL_Risk_Score et compatibilité camelCase
 """
 
 from fastapi import FastAPI, HTTPException, BackgroundTasks
@@ -21,7 +21,7 @@ from pathlib import Path
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("ai-api")
 
-app = FastAPI(title="Smart Gym AI API", version="3.3")
+app = FastAPI(title="Smart Gym AI API", version="3.4")
 
 RETRAIN_DATA_DIR = Path("retrain_data")
 RETRAIN_DATA_DIR.mkdir(exist_ok=True)
@@ -82,7 +82,7 @@ except Exception as e:
     logger.warning(f"⚠️ Scaler blessure non trouvé : {e}")
 
 # ══════════════════════════════════════════════════════════════
-# FEATURES (sans ACL_Risk_Score pour correspondre à train.py)
+# FEATURES (avec ACL_Risk_Score)
 # ══════════════════════════════════════════════════════════════
 
 FATIGUE_FEATURES = [
@@ -97,7 +97,7 @@ INJURY_FEATURES = [
     "Recovery_Days_Per_Week", "Fatigue_Score", "Load_Balance_Score",
     "WeightLiftedNorm", "HasCardio", "CardioDuration",
     "CardioIntensity", "MuscleRiskScore", "SessionsPerWeek",
-    "Gender", "BMI"
+    "Gender", "BMI", "ACL_Risk_Score"
 ]
 
 # ══════════════════════════════════════════════════════════════
@@ -125,18 +125,18 @@ class FatigueInput(BaseModel):
 
 class InjuryInput(BaseModel):
     age: int
-    trainingIntensity: float
-    trainingHoursPerWeek: float
-    recoveryDaysPerWeek: float
-    fatigueScore: float
-    loadBalanceScore: float
-    aclRiskScore: float
-    weightLifted: Optional[float] = 50.0
-    sessionsPerWeek: Optional[float] = 3.0
-    hasCardio: Optional[int] = 0
-    cardioDuration: Optional[float] = 0.0
-    cardioIntensity: Optional[float] = 0.0
-    muscleRiskScore: Optional[float] = 1.0
+    Training_Intensity: float
+    Training_Hours_Per_Week: float
+    Recovery_Days_Per_Week: float
+    Fatigue_Score: float
+    Load_Balance_Score: float
+    ACL_Risk_Score: float
+    WeightLiftedNorm: Optional[float] = 50.0
+    SessionsPerWeek: Optional[float] = 3.0
+    HasCardio: Optional[int] = 0
+    CardioDuration: Optional[float] = 0.0
+    CardioIntensity: Optional[float] = 0.0
+    MuscleRiskScore: Optional[float] = 1.0
     Gender: Optional[int] = 1
     BMI: Optional[float] = 22.5
     fitnessLevel: Optional[str] = "BEGINNER"
@@ -216,7 +216,7 @@ def health():
         "status": "ok",
         "models": {"fatigue": fatigue_model is not None, "injury": injury_model is not None},
         "scaler_available": not INJURY_SCALER_MISSING,
-        "version": "3.3",
+        "version": "3.4",
         "multipliers": {
             "fatigue_level": FATIGUE_LEVEL_MULTIPLIER,
             "injury_level": INJURY_LEVEL_MULTIPLIER,
@@ -295,31 +295,33 @@ def predict_injury(data: InjuryInput):
     logger.info(f"📥 Injury - level={data.fitnessLevel}, sleep={data.avgSleepHours}h, stress={data.stressLevel}/10")
     
     if INJURY_SCALER_MISSING:
-        logger.warning("⚠️ Scaler absent - prédiction dégradée")
+        logger.warning("⚠️ Scaler absent - prédiction désactivée")
         return {
             "injury_risk": 0,
-            "label": "risque faible",
-            "risk_level": "FAIBLE",
-            "confidence": 0.5,
-            "proba_injured": 0.2,
-            "warning": "Modèle non calibré. Activez le réentraînement pour améliorer la précision.",
-            "scaler_missing": True
+            "label": "non disponible",
+            "risk_level": "NON_DISPONIBLE",
+            "riskLevel": "NON_DISPONIBLE",
+            "confidence": 0.0,
+            "proba_injured": 0.0,
+            "scaler_missing": True,
+            "warning": "⚠️ Modèle non calibré. Les prédictions sont désactivées jusqu'au réentraînement."
         }
     
     try:
         features = pd.DataFrame([{
-            "Age": data.age,
-            "Training_Intensity": data.trainingIntensity,
-            "Training_Hours_Per_Week": data.trainingHoursPerWeek,
-            "Recovery_Days_Per_Week": data.recoveryDaysPerWeek,
-            "Fatigue_Score": data.fatigueScore,
-            "Load_Balance_Score": data.loadBalanceScore,
-            "WeightLiftedNorm": data.weightLifted,
-            "HasCardio": data.hasCardio,
-            "CardioDuration": data.cardioDuration,
-            "CardioIntensity": data.cardioIntensity,
-            "MuscleRiskScore": data.muscleRiskScore,
-            "SessionsPerWeek": data.sessionsPerWeek,
+            "Age": data.Age,
+            "Training_Intensity": data.Training_Intensity,
+            "Training_Hours_Per_Week": data.Training_Hours_Per_Week,
+            "Recovery_Days_Per_Week": data.Recovery_Days_Per_Week,
+            "Fatigue_Score": data.Fatigue_Score,
+            "Load_Balance_Score": data.Load_Balance_Score,
+            "ACL_Risk_Score": data.ACL_Risk_Score,
+            "WeightLiftedNorm": data.WeightLiftedNorm,
+            "HasCardio": data.HasCardio,
+            "CardioDuration": data.CardioDuration,
+            "CardioIntensity": data.CardioIntensity,
+            "MuscleRiskScore": data.MuscleRiskScore,
+            "SessionsPerWeek": data.SessionsPerWeek,
             "Gender": data.Gender,
             "BMI": data.BMI,
         }])
@@ -354,6 +356,7 @@ def predict_injury(data: InjuryInput):
             "injury_risk": 1 if adjusted_score > 0.5 else 0,
             "label": label,
             "risk_level": risk_level,
+            "riskLevel": risk_level,
             "confidence": round(base_confidence, 2),
             "proba_injured": round(adjusted_score, 2),
             "multipliers_applied": {
@@ -385,7 +388,7 @@ def retrain(data: RetrainData, background_tasks: BackgroundTasks):
         
         return {
             "success": True,
-            "modelVersion": f"v3.3.{timestamp}",
+            "modelVersion": f"v3.4.{timestamp}",
             "fatigueAccuracy": 87.5,
             "injuryAccuracy": 82.3,
             "samplesReceived": data.totalSamples,

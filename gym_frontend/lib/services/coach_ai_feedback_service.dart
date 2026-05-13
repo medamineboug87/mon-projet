@@ -10,13 +10,15 @@ class CoachAIFeedbackService {
   static Future<Map<String, dynamic>?> getGlobalAccuracyStats() async {
     try {
       final token = await AuthService.getToken();
-      final response = await http.get(
-        Uri.parse('${ApiConfig.baseUrl}/api/ai/feedback/accuracy'),
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': 'Bearer $token',
-        },
-      ).timeout(const Duration(seconds: 10));
+      final response = await http
+          .get(
+            Uri.parse('${ApiConfig.baseUrl}/api/ai/feedback/accuracy'),
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': 'Bearer $token',
+            },
+          )
+          .timeout(const Duration(seconds: 10));
 
       if (response.statusCode == 200) {
         return jsonDecode(response.body);
@@ -33,39 +35,41 @@ class CoachAIFeedbackService {
       final token = await AuthService.getToken();
       final coachId = await AuthService.getCoachId();
 
-      // Récupérer d'abord la liste des membres du coach
-      final membersResponse = await http.get(
-        Uri.parse('${ApiConfig.baseUrl}/members/coach/$coachId'),
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': 'Bearer $token',
-        },
-      ).timeout(const Duration(seconds: 10));
+      // Récupérer tous les membres (pas de route /members/coach/{coachId})
+      final membersResponse = await http
+          .get(
+            Uri.parse('${ApiConfig.baseUrl}/members'),
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': 'Bearer $token',
+            },
+          )
+          .timeout(const Duration(seconds: 10));
 
       if (membersResponse.statusCode != 200) return [];
 
-      final members = jsonDecode(membersResponse.body) as List;
+      final allMembers = jsonDecode(membersResponse.body) as List;
       final List<Map<String, dynamic>> stats = [];
 
-      for (final member in members) {
+      for (final member in allMembers) {
         final memberId = member['id'];
         final memberName = member['fullName'];
 
-        final response = await http.get(
-          Uri.parse('${ApiConfig.baseUrl}/api/ai/feedback/accuracy/member/$memberId'),
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': 'Bearer $token',
-          },
-        ).timeout(const Duration(seconds: 5));
+        final response = await http
+            .get(
+              Uri.parse(
+                '${ApiConfig.baseUrl}/api/ai/feedback/accuracy/member/$memberId',
+              ),
+              headers: {
+                'Content-Type': 'application/json',
+                'Authorization': 'Bearer $token',
+              },
+            )
+            .timeout(const Duration(seconds: 5));
 
         if (response.statusCode == 200) {
           final data = jsonDecode(response.body) as Map<String, dynamic>;
-          stats.add({
-            'memberId': memberId,
-            'memberName': memberName,
-            ...data,
-          });
+          stats.add({'memberId': memberId, 'memberName': memberName, ...data});
         } else {
           stats.add({
             'memberId': memberId,
@@ -79,7 +83,10 @@ class CoachAIFeedbackService {
       }
 
       // Trier par nombre de corrections décroissant
-      stats.sort((a, b) => (b['correctionsCount'] ?? 0).compareTo(a['correctionsCount'] ?? 0));
+      stats.sort(
+        (a, b) =>
+            (b['correctionsCount'] ?? 0).compareTo(a['correctionsCount'] ?? 0),
+      );
       return stats;
     } catch (e) {
       return [];
@@ -87,18 +94,23 @@ class CoachAIFeedbackService {
   }
 
   // Récupérer les feedbacks récents par membre
-  static Future<Map<int, List<Map<String, dynamic>>>> getRecentFeedbacksByMember() async {
+  static Future<Map<int, List<Map<String, dynamic>>>>
+  getRecentFeedbacksByMember() async {
     try {
       final token = await AuthService.getToken();
       final coachId = await AuthService.getCoachId();
 
-      final response = await http.get(
-        Uri.parse('${ApiConfig.baseUrl}/api/ai/feedback/corrections?size=50'),
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': 'Bearer $token',
-        },
-      ).timeout(const Duration(seconds: 10));
+      final response = await http
+          .get(
+            Uri.parse(
+              '${ApiConfig.baseUrl}/api/ai/feedback/corrections?size=50',
+            ),
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': 'Bearer $token',
+            },
+          )
+          .timeout(const Duration(seconds: 10));
 
       if (response.statusCode != 200) return {};
 
@@ -118,8 +130,12 @@ class CoachAIFeedbackService {
       // Trier les feedbacks de chaque membre par date décroissante
       for (final entry in result.entries) {
         entry.value.sort((a, b) {
-          final dateA = a['createdAt'] != null ? DateTime.tryParse(a['createdAt'].toString()) : null;
-          final dateB = b['createdAt'] != null ? DateTime.tryParse(b['createdAt'].toString()) : null;
+          final dateA = a['createdAt'] != null
+              ? DateTime.tryParse(a['createdAt'].toString())
+              : null;
+          final dateB = b['createdAt'] != null
+              ? DateTime.tryParse(b['createdAt'].toString())
+              : null;
           if (dateA == null && dateB == null) return 0;
           if (dateA == null) return 1;
           if (dateB == null) return -1;

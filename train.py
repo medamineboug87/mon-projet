@@ -1,6 +1,6 @@
 """
 train.py — Entraînement avec Multimodal Sports Injury Dataset
-Version corrigée avec support réentraînement
+Version corrigée avec ACL_Risk_Score et support réentraînement
 """
 
 import pandas as pd
@@ -78,7 +78,7 @@ joblib.dump(FATIGUE_FEATURES, "model/fatigue_features.pkl")
 print("✅ Modèle fatigue sauvegardé\n")
 
 # ═══════════════════════════════════════════════════════════════
-# MODÈLE 2 — BLESSURE (avec support réentraînement)
+# MODÈLE 2 — BLESSURE (avec ACL_Risk_Score)
 # ═══════════════════════════════════════════════════════════════
 
 print("📊 Chargement du dataset Multimodal Sports Injury...")
@@ -116,6 +116,14 @@ df_clean['MuscleRiskScore'] = ((df_injury['muscle_activity'].fillna(50) / 100) *
 df_clean['SessionsPerWeek'] = (df_injury['training_duration'].fillna(60) / 60 / 1.5).clip(1, 7).round()
 
 # ═══════════════════════════════════════════════════════════════
+# AJOUT DE ACL_Risk_Score
+# ═══════════════════════════════════════════════════════════════
+df_clean['ACL_Risk_Score'] = (
+    (df_injury['injury_occurred'].fillna(0) * 0.5) +
+    (df_injury['age'].fillna(30) / 100)
+).clip(0, 1)
+
+# ═══════════════════════════════════════════════════════════════
 # INTÉGRATION DES FEEDBACKS (mode réentraînement)
 # ═══════════════════════════════════════════════════════════════
 
@@ -130,6 +138,10 @@ if args.retrain and args.use_feedback:
     if all_feedback:
         print(f"📊 {len(all_feedback)} feedbacks ajoutés à l'entraînement")
         df_feedback = pd.DataFrame(all_feedback)
+        
+        # Ajouter ACL_Risk_Score aux feedbacks si absent
+        if 'ACL_Risk_Score' not in df_feedback.columns:
+            df_feedback['ACL_Risk_Score'] = 0.1
         
         for col in df_clean.columns:
             if col in df_feedback.columns:
@@ -151,7 +163,7 @@ INJURY_FEATURES = [
     "Recovery_Days_Per_Week", "Fatigue_Score", "Load_Balance_Score",
     "WeightLiftedNorm", "HasCardio", "CardioDuration",
     "CardioIntensity", "MuscleRiskScore", "SessionsPerWeek",
-    "Gender", "BMI"
+    "Gender", "BMI", "ACL_Risk_Score"
 ]
 
 X = df_clean[INJURY_FEATURES]
