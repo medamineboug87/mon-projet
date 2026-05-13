@@ -389,8 +389,16 @@ public class AIService {
 
         double totalVolume = getEffectiveTotalVolume(lastSession);
         analysis.put("totalVolumeSessions", Math.round(totalVolume));
-        analysis.put("sessionCount", previousSessions.size() + 1);
-        analysis.put("totalMinutes", previousSessions.stream().mapToInt(TrainingSession::getDuration).sum() + lastSession.getDuration());
+
+        // ═══════════════════════════════════════════════════════════
+        // AJOUTS pour corriger l'affichage Flutter (Problème #4)
+        // ═══════════════════════════════════════════════════════════
+        int sessionCount = previousSessions != null ? previousSessions.size() + 1 : 1;
+        int totalMinutes = (previousSessions != null ? previousSessions.stream().mapToInt(TrainingSession::getDuration).sum() : 0)
+                + (lastSession != null ? lastSession.getDuration() : 0);
+
+        analysis.put("sessionCount", sessionCount);
+        analysis.put("totalMinutes", totalMinutes);
         analysis.put("riskLevel", getRiskLevelFromWarnings(warnings));
         analysis.put("warnings", warnings);
         analysis.put("recommendations", recommendations);

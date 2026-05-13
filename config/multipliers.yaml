@@ -1,0 +1,24 @@
+# config/multipliers.yml
+# Fichier de configuration partagé entre Java et Python
+
+fatigue_level_multiplier:
+  BEGINNER: 1.4
+  INTERMEDIATE: 1.15
+  ADVANCED: 1.0
+  ATHLETE: 0.85
+
+injury_level_multiplier:
+  BEGINNER: 1.5
+  INTERMEDIATE: 1.2
+  ADVANCED: 1.0
+  ATHLETE: 0.9
+
+sleep_multiplier:
+  poor: 1.3      # < 6 heures
+  moderate: 1.15 # 6-7 heures
+  good: 1.0      # >= 7 heures
+
+stress_multiplier:
+  high: 1.25     # >= 7/10
+  moderate: 1.1  # 5-6/10
+  low: 1.0       # <= 4/10

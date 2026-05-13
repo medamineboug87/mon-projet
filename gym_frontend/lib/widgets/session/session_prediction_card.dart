@@ -46,17 +46,20 @@ class SessionPredictionCard extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           _buildHeader(exerciseCount),
-          if (effectiveWeight > 0) _buildEffectiveWeightInfo(effectiveWeight, muscleRiskSource),
+          if (effectiveWeight > 0)
+            _buildEffectiveWeightInfo(effectiveWeight, muscleRiskSource),
           const SizedBox(height: 14),
           _buildFatigueInjuryRow(fatigueLbl, injuryLbl, fatigue, injury),
           const SizedBox(height: 10),
           ProgressionCard(overload: overload ?? {}),
-          if (recommendedRestDays > 0) RestRecommendationCard(days: recommendedRestDays),
+          if (recommendedRestDays > 0)
+            RestRecommendationCard(days: recommendedRestDays),
           const SizedBox(height: 10),
           _buildOverloadCard(riskLevel, riskColor, overload),
           if (warnings.isNotEmpty) _buildWarningsList(warnings),
           if (recs.isNotEmpty) _buildRecommendationsList(recs),
-          if (recommendedRestDays > 0) _buildRestRecommendationText(recommendedRestDays),
+          if (recommendedRestDays > 0)
+            _buildRestRecommendationText(recommendedRestDays),
         ],
       ),
     );
@@ -77,7 +80,15 @@ class SessionPredictionCard extends StatelessWidget {
             children: [
               Icon(Icons.auto_awesome_rounded, color: _kGreen, size: 11),
               SizedBox(width: 4),
-              Text('ANALYSE IA', style: TextStyle(color: _kGreen, fontSize: 9, fontWeight: FontWeight.w800, letterSpacing: 0.8)),
+              Text(
+                'ANALYSE IA',
+                style: TextStyle(
+                  color: _kGreen,
+                  fontSize: 9,
+                  fontWeight: FontWeight.w800,
+                  letterSpacing: 0.8,
+                ),
+              ),
             ],
           ),
         ),
@@ -85,13 +96,23 @@ class SessionPredictionCard extends StatelessWidget {
           const SizedBox(width: 8),
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-            decoration: BoxDecoration(color: _kBlue.withValues(alpha: 0.12), borderRadius: BorderRadius.circular(8)),
+            decoration: BoxDecoration(
+              color: _kBlue.withValues(alpha: 0.12),
+              borderRadius: BorderRadius.circular(8),
+            ),
             child: Row(
               mainAxisSize: MainAxisSize.min,
               children: [
                 const Icon(Icons.list_alt_rounded, color: _kBlue, size: 11),
                 const SizedBox(width: 4),
-                Text('$exerciseCount EXERCICES RÉELS', style: const TextStyle(color: _kBlue, fontSize: 9, fontWeight: FontWeight.w800)),
+                Text(
+                  '$exerciseCount EXERCICES RÉELS',
+                  style: const TextStyle(
+                    color: _kBlue,
+                    fontSize: 9,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
               ],
             ),
           ),
@@ -106,17 +127,29 @@ class SessionPredictionCard extends StatelessWidget {
         const SizedBox(height: 8),
         Container(
           padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-          decoration: BoxDecoration(color: _kGreenL, borderRadius: BorderRadius.circular(8)),
+          decoration: BoxDecoration(
+            color: _kGreenL,
+            borderRadius: BorderRadius.circular(8),
+          ),
           child: Text(
             'Charge effective analysée : ${weight}kg${source == 'EXERCICES_RÉELS' ? ' (données réelles)' : ''}',
-            style: const TextStyle(color: _kGreenDark, fontSize: 10, fontWeight: FontWeight.w600),
+            style: const TextStyle(
+              color: _kGreenDark,
+              fontSize: 10,
+              fontWeight: FontWeight.w600,
+            ),
           ),
         ),
       ],
     );
   }
 
-  Widget _buildFatigueInjuryRow(String fatigueLbl, String injuryLbl, dynamic fatigue, dynamic injury) {
+  Widget _buildFatigueInjuryRow(
+    String fatigueLbl,
+    String injuryLbl,
+    dynamic fatigue,
+    dynamic injury,
+  ) {
     return Row(
       children: [
         Expanded(
@@ -142,7 +175,11 @@ class SessionPredictionCard extends StatelessWidget {
     );
   }
 
-  Widget _buildOverloadCard(String riskLevel, Color riskColor, dynamic overload) {
+  Widget _buildOverloadCard(
+    String riskLevel,
+    Color riskColor,
+    dynamic overload,
+  ) {
     return Container(
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
@@ -158,7 +195,10 @@ class SessionPredictionCard extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const Text('Charge hebdomadaire', style: TextStyle(color: _kTextSub, fontSize: 11)),
+                const Text(
+                  'Charge hebdomadaire',
+                  style: TextStyle(color: _kTextSub, fontSize: 11),
+                ),
                 Text(
                   '${overload?['sessionCount'] ?? 0} séances • ${overload?['totalMinutes'] ?? 0} min',
                   style: const TextStyle(color: _kText, fontSize: 11),
@@ -168,8 +208,18 @@ class SessionPredictionCard extends StatelessWidget {
           ),
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-            decoration: BoxDecoration(color: riskColor.withValues(alpha: 0.15), borderRadius: BorderRadius.circular(20)),
-            child: Text(riskLevel, style: TextStyle(color: riskColor, fontSize: 11, fontWeight: FontWeight.w800)),
+            decoration: BoxDecoration(
+              color: riskColor.withValues(alpha: 0.15),
+              borderRadius: BorderRadius.circular(20),
+            ),
+            child: Text(
+              riskLevel,
+              style: TextStyle(
+                color: riskColor,
+                fontSize: 11,
+                fontWeight: FontWeight.w800,
+              ),
+            ),
           ),
         ],
       ),
@@ -180,17 +230,29 @@ class SessionPredictionCard extends StatelessWidget {
     return Column(
       children: [
         const SizedBox(height: 10),
-        ...warnings.take(3).map((w) => Padding(
-          padding: const EdgeInsets.only(bottom: 5),
-          child: Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              const Icon(Icons.circle, color: _kRed, size: 6),
-              const SizedBox(width: 8),
-              Expanded(child: Text(w, style: const TextStyle(color: Colors.black54, fontSize: 11))),
-            ],
-          ),
-        )),
+        ...warnings
+            .take(3)
+            .map(
+              (w) => Padding(
+                padding: const EdgeInsets.only(bottom: 5),
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Icon(Icons.circle, color: _kRed, size: 6),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        w,
+                        style: const TextStyle(
+                          color: Colors.black54,
+                          fontSize: 11,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
       ],
     );
   }
@@ -199,17 +261,30 @@ class SessionPredictionCard extends StatelessWidget {
     return Column(
       children: [
         const SizedBox(height: 8),
-        ...recs.take(2).map((r) => Padding(
-          padding: const EdgeInsets.only(bottom: 5),
-          child: Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              const Icon(Icons.lightbulb_rounded, color: _kGreen, size: 13),
-              const SizedBox(width: 6),
-              Expanded(child: Text(r, style: const TextStyle(color: _kTextSub, fontSize: 11))),
-            ],
-          ),
-        )),
+        ...recs
+            .take(2)
+            .map(
+              (r) => Padding(
+                padding: const EdgeInsets.only(bottom: 5),
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Icon(
+                      Icons.lightbulb_rounded,
+                      color: _kGreen,
+                      size: 13,
+                    ),
+                    const SizedBox(width: 6),
+                    Expanded(
+                      child: Text(
+                        r,
+                        style: const TextStyle(color: _kTextSub, fontSize: 11),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
       ],
     );
   }
@@ -240,10 +315,14 @@ class SessionPredictionCard extends StatelessWidget {
 
   Color _getRiskColor(String riskLevel) {
     switch (riskLevel) {
-      case 'CRITIQUE': return _kRed;
-      case 'ÉLEVÉ': return _kOrange;
-      case 'MODÉRÉ': return const Color(0xFFFFD740);
-      default: return _kGreen;
+      case 'CRITIQUE':
+        return _kRed;
+      case 'ÉLEVÉ':
+        return _kOrange;
+      case 'MODÉRÉ':
+        return const Color(0xFFFFD740);
+      default:
+        return _kGreen;
     }
   }
 }
@@ -275,9 +354,25 @@ class _PredCard extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(children: [Icon(icon, color: color, size: 14), const SizedBox(width: 5), Text(label, style: const TextStyle(color: _kTextSub, fontSize: 10))]),
+          Row(
+            children: [
+              Icon(icon, color: color, size: 14),
+              const SizedBox(width: 5),
+              Text(
+                label,
+                style: const TextStyle(color: _kTextSub, fontSize: 10),
+              ),
+            ],
+          ),
           const SizedBox(height: 6),
-          Text(value, style: TextStyle(color: color, fontSize: 13, fontWeight: FontWeight.w800)),
+          Text(
+            value,
+            style: TextStyle(
+              color: color,
+              fontSize: 13,
+              fontWeight: FontWeight.w800,
+            ),
+          ),
           const SizedBox(height: 4),
           ClipRRect(
             borderRadius: BorderRadius.circular(3),
@@ -289,7 +384,10 @@ class _PredCard extends StatelessWidget {
             ),
           ),
           const SizedBox(height: 2),
-          Text('${(confidence * 100).toStringAsFixed(0)}% confiance', style: TextStyle(color: color.withValues(alpha: 0.6), fontSize: 9)),
+          Text(
+            '${(confidence * 100).toStringAsFixed(0)}% confiance',
+            style: TextStyle(color: color.withValues(alpha: 0.6), fontSize: 9),
+          ),
         ],
       ),
     );
