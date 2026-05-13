@@ -3,7 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../providers/message_provider.dart';
 import '../providers/member_provider.dart';
-import '../providers/subscription_provider.dart'; // ← AJOUTER CETTE LIGNE
+import '../providers/subscription_provider.dart';
 import '../services/auth_service.dart';
 import 'dashboard_screen.dart';
 import 'sessions_tab.dart';
@@ -100,13 +100,12 @@ class _MemberHomeScreenState extends ConsumerState<MemberHomeScreen>
                 Expanded(
                   child: IndexedStack(
                     index: _currentIndex,
-                    children: const [
-                      DashboardScreen(
-                        memberId: 0,
-                      ), // memberId sera récupéré via provider
-                      SessionsTab(),
-                      ProfileTab(),
-                      MessagesTab(),
+                    children: [
+                      // ✅ FIX : passer le vrai memberId
+                      DashboardScreen(memberId: widget.memberId),
+                      SessionsTab(memberId: widget.memberId),
+                      ProfileTab(memberId: widget.memberId),
+                      MessagesTab(memberId: widget.memberId),
                     ],
                   ),
                 ),
