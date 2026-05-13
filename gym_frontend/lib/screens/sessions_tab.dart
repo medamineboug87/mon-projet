@@ -2,7 +2,6 @@
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import '../providers/member_provider.dart';
 import 'new_session_screen.dart';
 import 'sessions_history_screen.dart';
 
@@ -15,7 +14,9 @@ const Color _kTextSub = Color(0xFF6B7A99);
 const Color _kBorder = Color(0xFFDDE2EE);
 
 class SessionsTab extends ConsumerStatefulWidget {
-  const SessionsTab({super.key});
+  final int memberId; // ✅ FIX #1 : paramètre ajouté
+
+  const SessionsTab({super.key, required this.memberId});
 
   @override
   ConsumerState<SessionsTab> createState() => _SessionsTabState();
@@ -24,21 +25,11 @@ class SessionsTab extends ConsumerStatefulWidget {
 class _SessionsTabState extends ConsumerState<SessionsTab>
     with SingleTickerProviderStateMixin {
   late TabController _tabController;
-  int? _memberId;
 
   @override
   void initState() {
     super.initState();
     _tabController = TabController(length: 2, vsync: this);
-    _loadMemberId();
-  }
-
-  Future<void> _loadMemberId() async {
-    final memberIdAsync = ref.read(memberIdProvider);
-    final id = memberIdAsync;
-    if (id != 0) {
-      setState(() => _memberId = id);
-    }
   }
 
   @override
@@ -49,10 +40,6 @@ class _SessionsTabState extends ConsumerState<SessionsTab>
 
   @override
   Widget build(BuildContext context) {
-    if (_memberId == null) {
-      return const Center(child: CircularProgressIndicator(color: _kGreen));
-    }
-
     return Scaffold(
       backgroundColor: Colors.transparent,
       appBar: AppBar(
@@ -81,7 +68,9 @@ class _SessionsTabState extends ConsumerState<SessionsTab>
         controller: _tabController,
         children: [
           _buildNewSessionTab(),
-          SessionsHistoryScreen(memberId: _memberId!),
+          SessionsHistoryScreen(
+            memberId: widget.memberId,
+          ), // ✅ FIX #4 : utilise widget.memberId directement
         ],
       ),
     );
@@ -124,7 +113,7 @@ class _SessionsTabState extends ConsumerState<SessionsTab>
                 final result = await Navigator.push(
                   context,
                   MaterialPageRoute(
-                    builder: (_) => NewSessionScreen(memberId: _memberId!),
+                    builder: (_) => NewSessionScreen(memberId: widget.memberId),
                   ),
                 );
                 if (result == true && mounted) {

@@ -101,7 +101,7 @@ class _MemberHomeScreenState extends ConsumerState<MemberHomeScreen>
                   child: IndexedStack(
                     index: _currentIndex,
                     children: [
-                      // ✅ FIX : passer le vrai memberId
+                      //
                       DashboardScreen(memberId: widget.memberId),
                       SessionsTab(memberId: widget.memberId),
                       ProfileTab(memberId: widget.memberId),

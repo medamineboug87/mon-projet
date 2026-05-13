@@ -2,7 +2,6 @@
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import '../providers/member_provider.dart';
 import '../services/auth_service.dart';
 import 'profile_screen.dart';
 import 'subscription_screen.dart';
@@ -25,32 +24,14 @@ const Color _kText = Color(0xFF1A2340);
 const Color _kTextSub = Color(0xFF6B7A99);
 const Color _kBorder = Color(0xFFDDE2EE);
 
-class ProfileTab extends ConsumerStatefulWidget {
-  const ProfileTab({super.key});
+class ProfileTab extends ConsumerWidget {
+  final int memberId; // ✅ FIX #2 : paramètre ajouté
 
-  @override
-  ConsumerState<ProfileTab> createState() => _ProfileTabState();
-}
+  const ProfileTab({super.key, required this.memberId});
 
-class _ProfileTabState extends ConsumerState<ProfileTab> {
-  int? _memberId;
-
-  @override
-  void initState() {
-    super.initState();
-    _loadMemberId();
-  }
-
-  Future<void> _loadMemberId() async {
-    final memberId = await AuthService.getMemberId();
-    if (mounted && memberId != 0) {
-      setState(() => _memberId = memberId);
-    }
-  }
-
-  Future<void> _logout() async {
+  Future<void> _logout(BuildContext context) async {
     await AuthService.logout();
-    if (mounted) {
+    if (context.mounted) {
       Navigator.pushReplacement(
         context,
         MaterialPageRoute(builder: (_) => const LoginScreen()),
@@ -59,11 +40,7 @@ class _ProfileTabState extends ConsumerState<ProfileTab> {
   }
 
   @override
-  Widget build(BuildContext context) {
-    if (_memberId == null) {
-      return const Center(child: CircularProgressIndicator(color: _kGreen));
-    }
-
+  Widget build(BuildContext context, WidgetRef ref) {
     final menuItems = [
       ProfileMenuItem(
         icon: Icons.person_outline_rounded,
@@ -71,7 +48,7 @@ class _ProfileTabState extends ConsumerState<ProfileTab> {
         subtitle: 'Informations personnelles',
         color: _kBlue,
         bgColor: _kBlueL,
-        screen: ProfileScreen(memberId: _memberId!),
+        screen: ProfileScreen(memberId: memberId),
       ),
       ProfileMenuItem(
         icon: Icons.card_membership_rounded,
@@ -79,7 +56,7 @@ class _ProfileTabState extends ConsumerState<ProfileTab> {
         subtitle: 'Gérer mon abonnement',
         color: _kGreen,
         bgColor: _kGreenL,
-        screen: SubscriptionScreen(memberId: _memberId!),
+        screen: SubscriptionScreen(memberId: memberId),
       ),
       ProfileMenuItem(
         icon: Icons.auto_awesome_rounded,
@@ -87,7 +64,7 @@ class _ProfileTabState extends ConsumerState<ProfileTab> {
         subtitle: 'Objectif, sommeil, stress, santé',
         color: _kPurple,
         bgColor: _kPurpleL,
-        screen: AIProfileScreen(memberId: _memberId!),
+        screen: AIProfileScreen(memberId: memberId),
       ),
       ProfileMenuItem(
         icon: Icons.calendar_month_rounded,
@@ -115,7 +92,7 @@ class _ProfileTabState extends ConsumerState<ProfileTab> {
         actions: [
           IconButton(
             icon: const Icon(Icons.logout_rounded, color: _kTextSub),
-            onPressed: _logout,
+            onPressed: () => _logout(context),
             tooltip: 'Se déconnecter',
           ),
         ],

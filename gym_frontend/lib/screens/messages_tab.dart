@@ -3,7 +3,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../providers/message_provider.dart';
-import '../services/auth_service.dart';
 import 'messages_screen.dart';
 import 'member_admin_chat_screen.dart';
 
@@ -19,7 +18,9 @@ const Color _kTextSub = Color(0xFF6B7A99);
 const Color _kBorder = Color(0xFFDDE2EE);
 
 class MessagesTab extends ConsumerStatefulWidget {
-  const MessagesTab({super.key});
+  final int memberId; // ✅ FIX #3 : paramètre ajouté
+
+  const MessagesTab({super.key, required this.memberId});
 
   @override
   ConsumerState<MessagesTab> createState() => _MessagesTabState();
@@ -28,20 +29,11 @@ class MessagesTab extends ConsumerStatefulWidget {
 class _MessagesTabState extends ConsumerState<MessagesTab>
     with SingleTickerProviderStateMixin {
   late TabController _tabController;
-  int? _memberId;
 
   @override
   void initState() {
     super.initState();
     _tabController = TabController(length: 2, vsync: this);
-    _loadMemberId();
-  }
-
-  Future<void> _loadMemberId() async {
-    final memberId = await AuthService.getMemberId();
-    if (mounted && memberId != 0) {
-      setState(() => _memberId = memberId);
-    }
   }
 
   @override
@@ -52,10 +44,6 @@ class _MessagesTabState extends ConsumerState<MessagesTab>
 
   @override
   Widget build(BuildContext context) {
-    if (_memberId == null) {
-      return const Center(child: CircularProgressIndicator(color: _kGreen));
-    }
-
     final unreadCoach =
         ref.watch(memberUnreadFromCoachProvider).valueOrNull ?? 0;
     final unreadAdmin =
@@ -103,7 +91,10 @@ class _MessagesTabState extends ConsumerState<MessagesTab>
       body: TabBarView(
         controller: _tabController,
         children: [
-          MessagesScreen(memberId: _memberId!, isCoach: false),
+          MessagesScreen(
+            memberId: widget.memberId,
+            isCoach: false,
+          ), // ✅ utilise widget.memberId
           const MemberAdminChatScreen(),
         ],
       ),
