@@ -74,8 +74,11 @@ class CoachAIFeedbackService {
           stats.add({
             'memberId': memberId,
             'memberName': memberName,
-            'fatigue': {'accuracyValue': 0.0},
-            'injury': {'accuracyValue': 0.0},
+            'fatigue': {
+              'accuracyValue': 0.0,
+              'accuracy': '0.0%',
+            }, // ← ajouter 'accuracy'
+            'injury': {'accuracyValue': 0.0, 'accuracy': '0.0%'},
             'averageRating': null,
             'correctionsCount': 0,
           });

@@ -1,0 +1,61 @@
+structure final :flutter
+lib/
+├── config/
+│   └── api_config.dart
+├── services/
+│   ├── auth_service.dart
+│   ├── member_service.dart
+│   └── coach_service.dart      
+└── screens/
+    ├── login_screen.dart
+    ├── dashboard_screen.dart
+    ├── new_session_screen.dart 
+    ├── sessions_history_screen.dart
+    ├── coach_dashboard_screen.dart 
+    └── member_details_screen.dart  
+------------------
+structure final :AI
+D:\gym-ai\
+├── data\
+│   ├── exercise_dataset.csv
+│   └── collegiate_injury.csv
+├── model\
+├── train.py
+├── app.py
+└── test_api.py
+---------------
+project_backend : Spring boot
+├── Controller/
+│   ├── AuthController.java
+│   ├── MemberController.java
+│   ├── SubscriptionController.java
+│   ├── TrainingSessionController.java
+│   |── AIController.java       
+│   |──Entity/
+│   │        ├── Member.java
+│   │        ├── Subscription.java
+│   │        ├── TrainingSession.java
+│   │        ├── User.java
+│   |        └── Role.java(enum)
+│   |── Repository/
+│   │        ├── MemberRepository.java
+│   │        ├── SubscriptionRepository.java
+│   │        ├── TrainingSessionRepository.java
+│   │        └── UserRepository.java
+│   │── DTO/    (optionnel mais PRO)
+│   │        └── LoginRequest.java
+|            └──RegisterRequest.java
+│   │── Security 
+│   │        ├── SecurityConfig.java
+│   │        ├── JwtFilter.java.java
+│   │        ├── JwtService.java.java
+│   │        ├── CrosConfig.java
+│   │        └── PasswordConfig+SwaggerConfig.java 
+└── Service/
+    ├── MemberService.java
+    ├── SubscriptionService.java
+    ├── TrainingSessionService.java
+    ├── UserService.java
+    └── AIService.java       
+-----
++PotgreSql bd   

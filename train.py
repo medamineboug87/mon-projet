@@ -1,6 +1,6 @@
 """
-train.py — Entraînement avec Multimodal Sports Injury Dataset
-Version corrigée avec ACL_Risk_Score et support réentraînement
+train.py — Entraînement des modèles avec support des feedbacks
+Version corrigée avec ACL_Risk_Score et réentraînement continu
 """
 
 import pandas as pd
@@ -17,7 +17,9 @@ import json
 import argparse
 from pathlib import Path
 
+# Créer le dossier model s'il n'existe pas
 os.makedirs("model", exist_ok=True)
+
 le = LabelEncoder()
 scaler = StandardScaler()
 imputer = SimpleImputer(strategy='median')
@@ -36,11 +38,13 @@ df_fatigue = pd.read_csv("data/exercise_dataset.csv")
 df_fatigue["Gender"] = le.fit_transform(df_fatigue["Gender"])
 df_fatigue = df_fatigue.dropna(subset=["Heart Rate", "Exercise Intensity", "Duration", "BMI", "Age"])
 
+# Création du target binaire (fatigue)
 df_fatigue["fatigue"] = (df_fatigue["Heart Rate"] > df_fatigue["Heart Rate"].quantile(0.75)).astype(int)
 
 print("=== FATIGUE — distribution labels ===")
 print(df_fatigue["fatigue"].value_counts())
 
+# Construction des features
 df_fatigue["WeightLifted"] = df_fatigue.get("Calories_Burned", pd.Series([50]*len(df_fatigue))) / 10
 df_fatigue["Intensity"] = df_fatigue["Exercise Intensity"]
 df_fatigue["HasCardio"] = (df_fatigue["Exercise Intensity"] >= 6).astype(int)
@@ -60,12 +64,19 @@ FATIGUE_FEATURES = [
 X_fatigue = df_fatigue[FATIGUE_FEATURES]
 y_fatigue = df_fatigue["fatigue"]
 
+# SMOTE pour équilibrer les classes
 smote = SMOTE(random_state=42, sampling_strategy=1.0)
 X_fat_res, y_fat_res = smote.fit_resample(X_fatigue, y_fatigue)
 
 X_train, X_test, y_train, y_test = train_test_split(X_fat_res, y_fat_res, test_size=0.2, random_state=42)
 
-fatigue_model = GradientBoostingClassifier(n_estimators=200, max_depth=4, learning_rate=0.05, min_samples_leaf=3, random_state=42)
+fatigue_model = GradientBoostingClassifier(
+    n_estimators=200, 
+    max_depth=4, 
+    learning_rate=0.05, 
+    min_samples_leaf=3, 
+    random_state=42
+)
 fatigue_model.fit(X_train, y_train)
 y_pred = fatigue_model.predict(X_test)
 
@@ -92,6 +103,7 @@ df_injury['gender_encoded'] = le.fit_transform(df_injury['gender'])
 unique_values = df_injury['injury_occurred'].unique()
 print(f"Valeurs uniques de injury_occurred: {unique_values}")
 
+# Création du target binaire
 if len(unique_values) == 3:
     df_injury['injury_binary'] = (df_injury['injury_occurred'] > 0).astype(int)
 else:
@@ -99,6 +111,7 @@ else:
 
 print(f"Distribution target:\n{df_injury['injury_binary'].value_counts()}")
 
+# Construction des features
 df_clean = pd.DataFrame()
 df_clean['Age'] = df_injury['age']
 df_clean['Gender'] = df_injury['gender_encoded']
@@ -115,9 +128,7 @@ df_clean['WeightLiftedNorm'] = np.random.uniform(20, 150, len(df_injury))
 df_clean['MuscleRiskScore'] = ((df_injury['muscle_activity'].fillna(50) / 100) * 2 + (df_injury['joint_angles'].fillna(0) / 50)).clip(1, 3)
 df_clean['SessionsPerWeek'] = (df_injury['training_duration'].fillna(60) / 60 / 1.5).clip(1, 7).round()
 
-# ═══════════════════════════════════════════════════════════════
 # AJOUT DE ACL_Risk_Score
-# ═══════════════════════════════════════════════════════════════
 df_clean['ACL_Risk_Score'] = (
     (df_injury['injury_occurred'].fillna(0) * 0.5) +
     (df_injury['age'].fillna(30) / 100)
@@ -130,31 +141,62 @@ df_clean['ACL_Risk_Score'] = (
 if args.retrain and args.use_feedback:
     feedback_files = list(Path("retrain_data").glob("retrain_data_*.json"))
     all_feedback = []
+    
     for f in feedback_files:
-        with open(f, "r") as file:
-            data = json.load(file)
-            all_feedback.extend(data.get("data", []))
+        try:
+            with open(f, "r", encoding="utf-8") as file:
+                data = json.load(file)
+                feedback_data = data.get("data", [])
+                if feedback_data:
+                    all_feedback.extend(feedback_data)
+                    print(f"📊 {len(feedback_data)} feedbacks chargés depuis {f.name}")
+        except Exception as e:
+            print(f"⚠️ Erreur lecture {f.name}: {e}")
     
     if all_feedback:
-        print(f"📊 {len(all_feedback)} feedbacks ajoutés à l'entraînement")
+        print(f"📊 Total: {len(all_feedback)} feedbacks ajoutés à l'entraînement")
         df_feedback = pd.DataFrame(all_feedback)
         
-        # Ajouter ACL_Risk_Score aux feedbacks si absent
-        if 'ACL_Risk_Score' not in df_feedback.columns:
-            df_feedback['ACL_Risk_Score'] = 0.1
+        # Vérifier que les colonnes nécessaires existent
+        required_cols = ["duration", "intensity", "weightLifted", 
+                         "fatigue_binary", "injury_binary", "coach_rating"]
         
+        for col in required_cols:
+            if col not in df_feedback.columns:
+                print(f"⚠️ Colonne {col} manquante dans les feedbacks, ajout de valeurs par défaut")
+                if col == "fatigue_binary":
+                    df_feedback[col] = 0
+                elif col == "injury_binary":
+                    df_feedback[col] = 0
+                elif col == "coach_rating":
+                    df_feedback[col] = 3
+                else:
+                    df_feedback[col] = 0
+        
+        # ⚠️ IMPORTANT: Le commentaire texte n'est PAS utilisé ici
+        # Seules les valeurs numériques sont conservées
+        
+        # Fusionner avec les données originales
+        # Convertir les types pour compatibilité
         for col in df_clean.columns:
             if col in df_feedback.columns:
-                df_feedback[col] = df_feedback[col].astype(df_clean[col].dtype)
+                try:
+                    df_feedback[col] = df_feedback[col].astype(df_clean[col].dtype)
+                except (ValueError, TypeError):
+                    print(f"⚠️ Conversion impossible pour {col}, utilisation de la valeur par défaut")
+                    df_feedback[col] = df_clean[col].iloc[0] if len(df_clean) > 0 else 0
         
         df_clean = pd.concat([df_clean, df_feedback], ignore_index=True)
         print(f"✅ Après ajout feedbacks: {len(df_clean)} lignes")
+    else:
+        print("📊 Aucun feedback trouvé, entraînement standard")
 
+# Nettoyage final
 print(f"Avant suppression des NaN: {len(df_clean)} lignes")
 df_clean = df_clean.dropna()
 print(f"Après suppression des NaN: {len(df_clean)} lignes")
 
-y = df_injury.loc[df_clean.index, 'injury_binary']
+y = df_injury.loc[df_clean.index, 'injury_binary'] if 'injury_binary' in df_injury.columns else df_injury['injury_binary']
 
 print(f"✅ {len(df_clean)} lignes préparées")
 
@@ -171,9 +213,11 @@ X = df_clean[INJURY_FEATURES]
 print(f"NaN dans X: {X.isna().sum().sum()}")
 print(f"NaN dans y: {y.isna().sum()}")
 
+# Standardisation
 X_scaled = scaler.fit_transform(X)
 X_scaled = pd.DataFrame(X_scaled, columns=X.columns)
 
+# SMOTE pour équilibrer
 smote = SMOTE(random_state=42, sampling_strategy=1.0)
 X_resampled, y_resampled = smote.fit_resample(X_scaled, y)
 
@@ -181,7 +225,13 @@ print(f"📊 Après SMOTE: {pd.Series(y_resampled).value_counts().to_dict()}")
 
 X_train, X_test, y_train, y_test = train_test_split(X_resampled, y_resampled, test_size=0.2, random_state=42)
 
-injury_model = GradientBoostingClassifier(n_estimators=200, max_depth=4, learning_rate=0.05, min_samples_leaf=3, random_state=42)
+injury_model = GradientBoostingClassifier(
+    n_estimators=200, 
+    max_depth=4, 
+    learning_rate=0.05, 
+    min_samples_leaf=3, 
+    random_state=42
+)
 injury_model.fit(X_train, y_train)
 y_pred = injury_model.predict(X_test)
 

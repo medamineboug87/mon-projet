@@ -30,9 +30,9 @@ public class AIFeedbackService {
         this.sessionRepository  = sessionRepository;
     }
 
-    // ─────────────────────────────────────────────
+    // ═══════════════════════════════════════════════════════════════
     // CRÉER OU METTRE À JOUR UN FEEDBACK
-    // ─────────────────────────────────────────────
+    // ═══════════════════════════════════════════════════════════════
 
     @Transactional
     public AIFeedback saveFeedback(Long memberId, Long coachId,
@@ -55,7 +55,9 @@ public class AIFeedbackService {
             sessionRepository.findById(sessionId).ifPresent(feedback::setSession);
         }
 
-        // ── Prédictions originales ──
+        // ═══════════════════════════════════════════════════════════════
+        // PRÉDICTIONS ORIGINALES (stockées pour référence)
+        // ═══════════════════════════════════════════════════════════════
         if (data.containsKey("originalFatigueLabel"))
             feedback.setOriginalFatigueLabel((String) data.get("originalFatigueLabel"));
         if (data.containsKey("originalFatigueConfidence") && data.get("originalFatigueConfidence") != null)
@@ -67,43 +69,90 @@ public class AIFeedbackService {
         if (data.containsKey("originalOverloadLevel"))
             feedback.setOriginalOverloadLevel((String) data.get("originalOverloadLevel"));
 
-        // ── Corrections du coach ──
+        // ═══════════════════════════════════════════════════════════════
+        // ✅ CORRECTIONS STRUCTURÉES (avec VALIDATION)
+        // ═══════════════════════════════════════════════════════════════
+
+        // Fatigue correction
         if (data.containsKey("fatiguePredictionCorrect") && data.get("fatiguePredictionCorrect") != null)
             feedback.setFatiguePredictionCorrect((Boolean) data.get("fatiguePredictionCorrect"));
+
+        if (data.containsKey("correctedFatigueLabel") && data.get("correctedFatigueLabel") != null) {
+            String label = (String) data.get("correctedFatigueLabel");
+            // ✅ VALIDATION : seulement "normal" ou "fatigué"
+            if (!List.of("normal", "fatigué").contains(label)) {
+                throw new IllegalArgumentException("Label fatigue invalide: " + label + ". Valeurs autorisées: normal, fatigué");
+            }
+            feedback.setCorrectedFatigueLabel(label);
+        }
+
+        // Injury correction
         if (data.containsKey("injuryPredictionCorrect") && data.get("injuryPredictionCorrect") != null)
             feedback.setInjuryPredictionCorrect((Boolean) data.get("injuryPredictionCorrect"));
+
+        if (data.containsKey("correctedInjuryLabel") && data.get("correctedInjuryLabel") != null) {
+            String label = (String) data.get("correctedInjuryLabel");
+            // ✅ VALIDATION : seulement "risque faible" ou "risque élevé"
+            if (!List.of("risque faible", "risque élevé").contains(label)) {
+                throw new IllegalArgumentException("Label blessure invalide: " + label + ". Valeurs autorisées: risque faible, risque élevé");
+            }
+            feedback.setCorrectedInjuryLabel(label);
+        }
+
+        // Overload correction
         if (data.containsKey("overloadPredictionCorrect") && data.get("overloadPredictionCorrect") != null)
             feedback.setOverloadPredictionCorrect((Boolean) data.get("overloadPredictionCorrect"));
-        if (data.containsKey("correctedFatigueLabel"))
-            feedback.setCorrectedFatigueLabel((String) data.get("correctedFatigueLabel"));
-        if (data.containsKey("correctedInjuryLabel"))
-            feedback.setCorrectedInjuryLabel((String) data.get("correctedInjuryLabel"));
-        if (data.containsKey("correctedOverloadLevel"))
-            feedback.setCorrectedOverloadLevel((String) data.get("correctedOverloadLevel"));
 
-        // ── Note et commentaire ──
+        if (data.containsKey("correctedOverloadLevel") && data.get("correctedOverloadLevel") != null) {
+            String level = (String) data.get("correctedOverloadLevel");
+            // ✅ VALIDATION : seulement les 4 niveaux
+            if (!List.of("NORMAL", "MODÉRÉ", "ÉLEVÉ", "CRITIQUE").contains(level)) {
+                throw new IllegalArgumentException("Niveau surcharge invalide: " + level + ". Valeurs autorisées: NORMAL, MODÉRÉ, ÉLEVÉ, CRITIQUE");
+            }
+            feedback.setCorrectedOverloadLevel(level);
+        }
+
+        // ═══════════════════════════════════════════════════════════════
+        // NOTE ET COMMENTAIRE
+        // ═══════════════════════════════════════════════════════════════
         if (data.containsKey("coachRating") && data.get("coachRating") != null) {
             int rating = ((Number) data.get("coachRating")).intValue();
             if (rating < 1 || rating > 5)
                 throw new IllegalArgumentException("La note doit être entre 1 et 5");
             feedback.setCoachRating(rating);
         }
-        if (data.containsKey("coachComment"))
-            feedback.setCoachComment((String) data.get("coachComment"));
 
-        // ── Observations physiques ──
+        // 📝 TEXTE LIBRE - stocké sans validation (juste limité en longueur)
+        if (data.containsKey("coachComment")) {
+            String comment = (String) data.get("coachComment");
+            if (comment != null && comment.length() > 1000) {
+                comment = comment.substring(0, 1000);
+            }
+            feedback.setCoachComment(comment);
+        }
+
+        // Observations physiques
         if (data.containsKey("observedFatigueLevel") && data.get("observedFatigueLevel") != null) {
             int level = ((Number) data.get("observedFatigueLevel")).intValue();
             if (level < 0 || level > 10)
                 throw new IllegalArgumentException("Le niveau de fatigue observé doit être entre 0 et 10");
             feedback.setObservedFatigueLevel(level);
         }
+
         if (data.containsKey("injurySignsObserved") && data.get("injurySignsObserved") != null)
             feedback.setInjurySignsObserved((Boolean) data.get("injurySignsObserved"));
-        if (data.containsKey("injuryObservationDetail"))
-            feedback.setInjuryObservationDetail((String) data.get("injuryObservationDetail"));
+
+        if (data.containsKey("injuryObservationDetail")) {
+            String detail = (String) data.get("injuryObservationDetail");
+            if (detail != null && detail.length() > 500) {
+                detail = detail.substring(0, 500);
+            }
+            feedback.setInjuryObservationDetail(detail);
+        }
+
         if (data.containsKey("recommendedNextSessionLoad") && data.get("recommendedNextSessionLoad") != null)
             feedback.setRecommendedNextSessionLoad(((Number) data.get("recommendedNextSessionLoad")).doubleValue());
+
         if (data.containsKey("recommendedRestDays") && data.get("recommendedRestDays") != null)
             feedback.setRecommendedRestDays(((Number) data.get("recommendedRestDays")).intValue());
 
@@ -116,9 +165,9 @@ public class AIFeedbackService {
         return saved;
     }
 
-    // ─────────────────────────────────────────────
+    // ═══════════════════════════════════════════════════════════════
     // LECTURES
-    // ─────────────────────────────────────────────
+    // ═══════════════════════════════════════════════════════════════
 
     public List<AIFeedback> getFeedbacksByMember(Long memberId) {
         return feedbackRepository.findByMemberIdOrderByCreatedAtDesc(memberId);
@@ -136,9 +185,9 @@ public class AIFeedbackService {
         return feedbackRepository.findAllWithCorrections();
     }
 
-    // ─────────────────────────────────────────────
+    // ═══════════════════════════════════════════════════════════════
     // STATISTIQUES GLOBALES DE PRÉCISION
-    // ─────────────────────────────────────────────
+    // ═══════════════════════════════════════════════════════════════
 
     public Map<String, Object> getAccuracyStats() {
         Map<String, Object> stats = new LinkedHashMap<>();
@@ -156,7 +205,6 @@ public class AIFeedbackService {
         stats.put("fatigue", Map.of(
                 "correct",   correctFatigue,
                 "evaluated", evaluatedFatigue,
-                "accuracy",  fatigueAccuracy + "%",
                 "accuracyValue", fatigueAccuracy
         ));
 
@@ -170,7 +218,6 @@ public class AIFeedbackService {
         stats.put("injury", Map.of(
                 "correct",   correctInjury,
                 "evaluated", evaluatedInjury,
-                "accuracy",  injuryAccuracy + "%",
                 "accuracyValue", injuryAccuracy
         ));
 
@@ -197,16 +244,14 @@ public class AIFeedbackService {
         else if (avgAccuracy > 0)   quality = "À améliorer — réentraînement recommandé";
         else                        quality = "Données insuffisantes";
 
-        stats.put("overallAccuracy",  Math.round(avgAccuracy * 10.0) / 10.0 + "%");
-        stats.put("overallAccuracyValue", Math.round(avgAccuracy * 10.0) / 10.0);
-        stats.put("qualityLabel",     quality);
+        stats.put("qualityLabel", quality);
 
         return stats;
     }
 
-    // ─────────────────────────────────────────────
+    // ═══════════════════════════════════════════════════════════════
     // STATISTIQUES PAR MEMBRE
-    // ─────────────────────────────────────────────
+    // ═══════════════════════════════════════════════════════════════
 
     public Map<String, Object> getMemberAccuracyStats(Long memberId) {
         List<AIFeedback> feedbacks = feedbackRepository.findByMemberIdOrderByCreatedAtDesc(memberId);
@@ -236,10 +281,10 @@ public class AIFeedbackService {
 
         stats.put("fatigue", Map.of(
                 "correct", corrFat, "evaluated", evalFat,
-                "accuracy", fatAcc + "%", "accuracyValue", fatAcc));
+                "accuracyValue", fatAcc));
         stats.put("injury", Map.of(
                 "correct", corrInj, "evaluated", evalInj,
-                "accuracy", injAcc + "%", "accuracyValue", injAcc));
+                "accuracyValue", injAcc));
 
         // Note moyenne
         OptionalDouble avgRating = feedbacks.stream()
@@ -249,10 +294,6 @@ public class AIFeedbackService {
         stats.put("averageRating", avgRating.isPresent()
                 ? Math.round(avgRating.getAsDouble() * 10.0) / 10.0 : null);
 
-        // Dernière correction (si présente)
-        feedbacks.stream().findFirst().ifPresent(latest ->
-                stats.put("latestFeedback", toMap(latest)));
-
         // Nombre de corrections
         long corrections = feedbacks.stream()
                 .filter(f -> Boolean.FALSE.equals(f.getFatiguePredictionCorrect())
@@ -260,19 +301,12 @@ public class AIFeedbackService {
                 .count();
         stats.put("correctionsCount", corrections);
 
-        // Evolution tendance (derniers 5 feedbacks)
-        List<Map<String, Object>> trend = feedbacks.stream()
-                .limit(5)
-                .map(this::toTrendPoint)
-                .toList();
-        stats.put("recentTrend", trend);
-
         return stats;
     }
 
-    // ─────────────────────────────────────────────
-    // DONNÉES POUR LE RÉENTRAÎNEMENT
-    // ─────────────────────────────────────────────
+    // ═══════════════════════════════════════════════════════════════
+    // DONNÉES POUR LE RÉENTRAÎNEMENT (CE QUI PART À PYTHON)
+    // ═══════════════════════════════════════════════════════════════
 
     public Map<String, Object> getRetrainingData() {
         List<AIFeedback> feedbacks = feedbackRepository.findByUsedForRetrainingFalse();
@@ -285,36 +319,44 @@ public class AIFeedbackService {
             Member member = fb.getMember();
 
             Map<String, Object> row = new LinkedHashMap<>();
-            row.put("duration",             session.getDuration());
-            row.put("intensity",            session.getIntensity());
-            row.put("weightLifted",         session.getWeightLifted());
-            row.put("hasCardio",            session.getHasCardio() ? 1 : 0);
-            row.put("cardioDuration",       session.getCardioDurationMinutes());
-            row.put("cardioIntensity",      session.getCardioIntensity());
-            row.put("painLevel",            session.getPainLevel() != null ? session.getPainLevel() : 0);
-            row.put("warmupDone",           session.getWarmupDone() != null ? (session.getWarmupDone() ? 1 : 0) : 1);
-            row.put("age",    member.getAge());
+
+            // ═══════════════════════════════════════════════════════
+            // ⚠️ IMPORTANT : Seuls les champs NUMÉRIQUES partent à Python
+            // Le commentaire texte (coachComment) N'EST PAS inclus ici !
+            // ═══════════════════════════════════════════════════════
+
+            row.put("duration", session.getDuration());
+            row.put("intensity", session.getIntensity());
+            row.put("weightLifted", session.getWeightLifted());
+            row.put("hasCardio", session.getHasCardio() ? 1 : 0);
+            row.put("painLevel", session.getPainLevel() != null ? session.getPainLevel() : 0);
+            row.put("warmupDone", session.getWarmupDone() != null ? (session.getWarmupDone() ? 1 : 0) : 1);
+            row.put("age", member.getAge());
             row.put("gender", "MALE".equalsIgnoreCase(member.getGender()) ? 1 : 0);
 
             double bmi = member.getHeight() > 0
                     ? member.getWeight() / Math.pow(member.getHeight() / 100.0, 2) : 22.5;
             row.put("bmi", Math.round(bmi * 10.0) / 10.0);
 
+            // ✅ Fatigue label → binaire (0 ou 1)
             String fatigueLabel = fb.getCorrectedFatigueLabel() != null
                     ? fb.getCorrectedFatigueLabel() : fb.getOriginalFatigueLabel();
-            row.put("fatigue_label",   fatigueLabel);
-            row.put("fatigue_binary",  "fatigué".equals(fatigueLabel) ? 1 : 0);
+            row.put("fatigue_binary", "fatigué".equals(fatigueLabel) ? 1 : 0);
 
+            // ✅ Injury label → binaire (0 ou 1)
             String injuryLabel = fb.getCorrectedInjuryLabel() != null
                     ? fb.getCorrectedInjuryLabel() : fb.getOriginalInjuryLabel();
-            row.put("injury_label",  injuryLabel);
             row.put("injury_binary", "risque élevé".equals(injuryLabel) ? 1 : 0);
 
+            // ✅ Note du coach (1-5)
+            row.put("coach_rating", fb.getCoachRating());
+
+            // Observations physiques
             row.put("coach_observed_fatigue", fb.getObservedFatigueLevel());
-            row.put("injury_signs_observed",  fb.getInjurySignsObserved() != null
+            row.put("injury_signs_observed", fb.getInjurySignsObserved() != null
                     ? (fb.getInjurySignsObserved() ? 1 : 0) : null);
-            row.put("coach_rating",   fb.getCoachRating());
-            row.put("feedback_id",    fb.getId());
+
+            // 📝 Le commentaire texte (coachComment) N'EST PAS inclus !
 
             rows.add(row);
         }
@@ -331,24 +373,28 @@ public class AIFeedbackService {
         return result;
     }
 
+    // ═══════════════════════════════════════════════════════════════
+    // MARQUER LES FEEDBACKS COMME UTILISÉS
+    // ═══════════════════════════════════════════════════════════════
+
     @Transactional
     public int markFeedbacksAsUsed(List<Long> feedbackIds) {
-        int count = 0;
+        int[] count = {0};  // ← tableau = référence modifiable
         for (Long id : feedbackIds) {
             feedbackRepository.findById(id).ifPresent(fb -> {
                 fb.setUsedForRetraining(true);
                 fb.setUpdatedAt(LocalDateTime.now());
                 feedbackRepository.save(fb);
+                count[0]++;  // ✅ Plus d'erreur
             });
-            count++;
         }
-        log.info("✅ {} feedbacks marqués comme utilisés", count);
-        return count;
+        log.info("✅ {} feedbacks marqués comme utilisés", count[0]);
+        return count[0];
     }
 
-    // ─────────────────────────────────────────────
-    // SÉRIALISATION
-    // ─────────────────────────────────────────────
+    // ═══════════════════════════════════════════════════════════════
+    // SÉRIALISATION (pour les réponses API)
+    // ═══════════════════════════════════════════════════════════════
 
     public Map<String, Object> toMap(AIFeedback fb) {
         Map<String, Object> m = new LinkedHashMap<>();
@@ -381,16 +427,5 @@ public class AIFeedbackService {
         m.put("createdAt",         fb.getCreatedAt());
         m.put("updatedAt",         fb.getUpdatedAt());
         return m;
-    }
-
-    private Map<String, Object> toTrendPoint(AIFeedback fb) {
-        Map<String, Object> p = new LinkedHashMap<>();
-        p.put("date",                  fb.getCreatedAt());
-        p.put("fatigue_correct",       fb.getFatiguePredictionCorrect());
-        p.put("injury_correct",        fb.getInjuryPredictionCorrect());
-        p.put("rating",                fb.getCoachRating());
-        p.put("observedFatigueLevel",  fb.getObservedFatigueLevel());
-        p.put("injurySigns",           fb.getInjurySignsObserved());
-        return p;
     }
 }

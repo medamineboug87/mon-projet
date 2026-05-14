@@ -1,6 +1,6 @@
 """
 app.py — Service IA pour Smart Gym
-Version 3.4 - avec ACL_Risk_Score et compatibilité camelCase
+Version 3.5 - avec ACL_Risk_Score et système de feedback complet
 """
 
 from fastapi import FastAPI, HTTPException, BackgroundTasks
@@ -21,7 +21,7 @@ from pathlib import Path
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("ai-api")
 
-app = FastAPI(title="Smart Gym AI API", version="3.4")
+app = FastAPI(title="Smart Gym AI API", version="3.5")
 
 RETRAIN_DATA_DIR = Path("retrain_data")
 RETRAIN_DATA_DIR.mkdir(exist_ok=True)
@@ -32,10 +32,28 @@ RETRAIN_DATA_DIR.mkdir(exist_ok=True)
 
 CONFIG_PATH = Path("config/multipliers.yml")
 DEFAULT_CONFIG = {
-    "fatigue_level_multiplier": {"BEGINNER": 1.4, "INTERMEDIATE": 1.15, "ADVANCED": 1.0, "ATHLETE": 0.85},
-    "injury_level_multiplier": {"BEGINNER": 1.5, "INTERMEDIATE": 1.2, "ADVANCED": 1.0, "ATHLETE": 0.9},
-    "sleep_multiplier": {"poor": 1.3, "moderate": 1.15, "good": 1.0},
-    "stress_multiplier": {"high": 1.25, "moderate": 1.1, "low": 1.0}
+    "fatigue_level_multiplier": {
+        "BEGINNER": 1.4, 
+        "INTERMEDIATE": 1.15, 
+        "ADVANCED": 1.0, 
+        "ATHLETE": 0.85
+    },
+    "injury_level_multiplier": {
+        "BEGINNER": 1.5, 
+        "INTERMEDIATE": 1.2, 
+        "ADVANCED": 1.0, 
+        "ATHLETE": 0.9
+    },
+    "sleep_multiplier": {
+        "poor": 1.3,      # < 6 heures
+        "moderate": 1.15, # 6-7 heures
+        "good": 1.0       # >= 7 heures
+    },
+    "stress_multiplier": {
+        "high": 1.25,     # >= 7/10
+        "moderate": 1.1,  # 5-6/10
+        "low": 1.0        # <= 4/10
+    }
 }
 
 try:
@@ -175,6 +193,7 @@ def get_fatigue_level_multiplier(level: str) -> float:
 def get_injury_level_multiplier(level: str) -> float:
     return INJURY_LEVEL_MULTIPLIER.get(level.upper(), 1.0)
 
+
 def _retrain_models():
     """Exécute train.py pour réentraîner les modèles avec les nouvelles données"""
     logger.info("🔄 Démarrage du réentraînement réel...")
@@ -189,6 +208,7 @@ def _retrain_models():
         
         if result.returncode == 0:
             logger.info("✅ Réentraînement terminé avec succès")
+            # Recharger les modèles globalement
             global fatigue_model, injury_model, injury_scaler, INJURY_SCALER_MISSING
             try:
                 fatigue_model = joblib.load("model/fatigue_model.pkl")
@@ -216,7 +236,7 @@ def health():
         "status": "ok",
         "models": {"fatigue": fatigue_model is not None, "injury": injury_model is not None},
         "scaler_available": not INJURY_SCALER_MISSING,
-        "version": "3.4",
+        "version": "3.5",
         "multipliers": {
             "fatigue_level": FATIGUE_LEVEL_MULTIPLIER,
             "injury_level": INJURY_LEVEL_MULTIPLIER,
@@ -229,6 +249,7 @@ def health():
         },
         "timestamp": datetime.now().isoformat(),
     }
+
 
 @app.post("/predict_fatigue")
 def predict_fatigue(data: FatigueInput):
@@ -286,6 +307,7 @@ def predict_fatigue(data: FatigueInput):
     except Exception as e:
         logger.error(f"❌ Erreur fatigue: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Fatigue prediction error: {str(e)}")
+
 
 @app.post("/predict_injury")
 def predict_injury(data: InjuryInput):
@@ -345,15 +367,18 @@ def predict_injury(data: InjuryInput):
         if adjusted_score > 0.7:
             risk_level = "ÉLEVÉ"
             label = "risque élevé"
+            injury_risk = 1
         elif adjusted_score > 0.4:
             risk_level = "MODÉRÉ"
             label = "risque modéré"
+            injury_risk = 0
         else:
             risk_level = "FAIBLE"
             label = "risque faible"
+            injury_risk = 0
 
         return {
-            "injury_risk": 1 if adjusted_score > 0.5 else 0,
+            "injury_risk": injury_risk,
             "label": label,
             "risk_level": risk_level,
             "riskLevel": risk_level,
@@ -370,12 +395,24 @@ def predict_injury(data: InjuryInput):
         logger.error(f"❌ Erreur injury: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Injury prediction error: {str(e)}")
 
+
 @app.post("/retrain")
 def retrain(data: RetrainData, background_tasks: BackgroundTasks):
     logger.info(f"🔁 Réentraînement demandé avec {data.totalSamples} samples")
+    
+    # ⚠️ Vérification que les données ne contiennent pas de texte
+    # Les données doivent être numériques pour l'entraînement
+    for sample in data.data:
+        # S'assurer que les valeurs sont numériques
+        for key in sample:
+            if isinstance(sample[key], str) and key not in ["fatigue_label", "injury_label"]:
+                logger.warning(f"⚠️ Donnée texte détectée dans {key}: {sample[key]}")
+    
     try:
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         filename = RETRAIN_DATA_DIR / f"retrain_data_{timestamp}.json"
+        
+        # Sauvegarde des données reçues
         with open(filename, "w", encoding="utf-8") as f:
             json.dump({
                 "timestamp": timestamp, 
@@ -384,21 +421,20 @@ def retrain(data: RetrainData, background_tasks: BackgroundTasks):
                 "data": data.data
             }, f, indent=2)
         
+        # Lance le réentraînement en arrière-plan
         background_tasks.add_task(_retrain_models)
         
         return {
             "success": True,
-            "modelVersion": f"v3.4.{timestamp}",
-            "fatigueAccuracy": 87.5,
-            "injuryAccuracy": 82.3,
+            "modelVersion": f"v3.5.{timestamp}",
             "samplesReceived": data.totalSamples,
             "savedFile": str(filename),
-            "scaler_missing": INJURY_SCALER_MISSING,
             "message": f"Réentraînement déclenché avec {data.totalSamples} feedbacks."
         }
     except Exception as e:
         logger.error(f"❌ Erreur retrain: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Retrain error: {str(e)}")
+
 
 @app.get("/stats")
 def get_stats():
@@ -413,8 +449,13 @@ def get_stats():
             "sleep": SLEEP_MULTIPLIER,
             "stress": STRESS_MULTIPLIER,
         },
+        "features": {
+            "fatigue": FATIGUE_FEATURES,
+            "injury": INJURY_FEATURES
+        },
         "uptime": datetime.now().isoformat(),
     }
+
 
 if __name__ == "__main__":
     import uvicorn

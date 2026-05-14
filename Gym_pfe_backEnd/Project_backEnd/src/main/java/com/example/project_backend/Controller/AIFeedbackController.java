@@ -1,6 +1,7 @@
 package com.example.project_backend.Controller;
 
 import com.example.project_backend.Entity.AIFeedback;
+import com.example.project_backend.Entity.Coach;
 import com.example.project_backend.Repository.CoachRepository;
 import com.example.project_backend.Repository.UserRepository;
 import com.example.project_backend.Service.AIFeedbackService;
@@ -36,23 +37,33 @@ public class AIFeedbackController {
         this.userRepository  = userRepository;
     }
 
-    // ── POST soumettre un feedback pour une prédiction ──
+    // ═══════════════════════════════════════════════════════════════
+    // POST - Soumettre un feedback pour une séance (appelé par Flutter)
+    // ═══════════════════════════════════════════════════════════════
+
     @PostMapping("/member/{memberId}/session/{sessionId}")
     public ResponseEntity<?> submitFeedback(
             @PathVariable Long memberId,
             @PathVariable Long sessionId,
             @RequestBody Map<String, Object> data) {
         try {
+            log.info("📝 Soumission feedback - memberId={}, sessionId={}", memberId, sessionId);
             Long coachId = resolveCoachId();
             AIFeedback saved = feedbackService.saveFeedback(memberId, coachId, sessionId, data);
             return ResponseEntity.ok(feedbackService.toMap(saved));
+        } catch (IllegalArgumentException e) {
+            log.warn("⚠️ Erreur validation feedback: {}", e.getMessage());
+            return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
         } catch (Exception e) {
-            log.error("Erreur soumission feedback: {}", e.getMessage());
+            log.error("❌ Erreur soumission feedback: {}", e.getMessage());
             return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
         }
     }
 
-    // ── POST soumettre un feedback sans session spécifique ──
+    // ═══════════════════════════════════════════════════════════════
+    // POST - Soumettre un feedback sans session (feedback général)
+    // ═══════════════════════════════════════════════════════════════
+
     @PostMapping("/member/{memberId}")
     public ResponseEntity<?> submitFeedbackNoSession(
             @PathVariable Long memberId,
@@ -66,7 +77,10 @@ public class AIFeedbackController {
         }
     }
 
-    // ── GET tous les feedbacks d'un membre ──
+    // ═══════════════════════════════════════════════════════════════
+    // GET - Tous les feedbacks d'un membre
+    // ═══════════════════════════════════════════════════════════════
+
     @GetMapping("/member/{memberId}")
     public ResponseEntity<?> getFeedbacksByMember(@PathVariable Long memberId) {
         try {
@@ -79,7 +93,10 @@ public class AIFeedbackController {
         }
     }
 
-    // ── GET tous les feedbacks soumis par le coach connecté ──
+    // ═══════════════════════════════════════════════════════════════
+    // GET - Tous les feedbacks du coach connecté
+    // ═══════════════════════════════════════════════════════════════
+
     @GetMapping("/my-feedbacks")
     public ResponseEntity<?> getMyFeedbacks() {
         try {
@@ -93,7 +110,10 @@ public class AIFeedbackController {
         }
     }
 
-    // ── GET feedback pour une séance spécifique ──
+    // ═══════════════════════════════════════════════════════════════
+    // GET - Feedback pour une séance spécifique
+    // ═══════════════════════════════════════════════════════════════
+
     @GetMapping("/session/{sessionId}")
     public ResponseEntity<?> getFeedbackBySession(@PathVariable Long sessionId) {
         return feedbackService.getFeedbackBySession(sessionId)
@@ -101,7 +121,10 @@ public class AIFeedbackController {
                 .orElse(ResponseEntity.notFound().build());
     }
 
-    // ── GET statistiques de précision pour un membre ──
+    // ═══════════════════════════════════════════════════════════════
+    // GET - Statistiques de précision pour un membre
+    // ═══════════════════════════════════════════════════════════════
+
     @GetMapping("/accuracy/member/{memberId}")
     public ResponseEntity<?> getMemberAccuracy(@PathVariable Long memberId) {
         try {
@@ -112,7 +135,10 @@ public class AIFeedbackController {
         }
     }
 
-    // ── GET statistiques globales du coach ──
+    // ═══════════════════════════════════════════════════════════════
+    // GET - Statistiques globales (précision des modèles)
+    // ═══════════════════════════════════════════════════════════════
+
     @GetMapping("/accuracy")
     public ResponseEntity<?> getGlobalAccuracy() {
         try {
@@ -123,7 +149,10 @@ public class AIFeedbackController {
         }
     }
 
-    // ── GET historique des corrections avec pagination légère ──
+    // ═══════════════════════════════════════════════════════════════
+    // GET - Historique des corrections (avec pagination)
+    // ═══════════════════════════════════════════════════════════════
+
     @GetMapping("/corrections")
     public ResponseEntity<?> getCorrections(
             @RequestParam(defaultValue = "0")  int page,
@@ -147,9 +176,10 @@ public class AIFeedbackController {
         }
     }
 
-    // ─────────────────────────────────────────────
-    // HELPER — résoudre le coachId depuis le JWT
-    // ─────────────────────────────────────────────
+    // ═══════════════════════════════════════════════════════════════
+    // HELPER - Récupérer le coachId depuis le JWT
+    // ═══════════════════════════════════════════════════════════════
+
     private Long resolveCoachId() {
         String username = SecurityContextHolder.getContext()
                 .getAuthentication().getName();
@@ -160,7 +190,7 @@ public class AIFeedbackController {
                     // Fallback : prendre le premier coach disponible (pour les tests admin)
                     return coachRepository.findAll().stream()
                             .findFirst()
-                            .map(c -> c.getId())
+                            .map(Coach::getId)
                             .orElseThrow(() -> new RuntimeException("Aucun coach trouvé"));
                 })
                 .orElseThrow(() -> new RuntimeException("User not found: " + username));

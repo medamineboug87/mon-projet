@@ -1,13 +1,10 @@
+// 📁 src/main/java/com/example/project_backend/Entity/AIFeedback.java
+
 package com.example.project_backend.Entity;
 
 import jakarta.persistence.*;
 import java.time.LocalDateTime;
 
-/**
- * Feedback du coach sur une prédiction IA.
- * Permet au coach de valider, corriger ou annoter les prédictions.
- * Ces données servent aussi au réentraînement futur des modèles.
- */
 @Entity
 @Table(name = "ai_feedbacks")
 public class AIFeedback {
@@ -16,131 +13,77 @@ public class AIFeedback {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    // ── Lien vers le membre concerné ──
+    // Relations
     @ManyToOne
     @JoinColumn(name = "member_id", nullable = false)
     private Member member;
 
-    // ── Lien vers le coach qui donne le feedback ──
     @ManyToOne
     @JoinColumn(name = "coach_id", nullable = false)
     private Coach coach;
 
-    // ── Lien vers la séance analysée ──
     @ManyToOne
     @JoinColumn(name = "session_id")
     private TrainingSession session;
 
-    // ─────────────────────────────────────────────
-    // PRÉDICTIONS ORIGINALES (ce que l'IA a prédit)
-    // ─────────────────────────────────────────────
+    // ═══════════════════════════════════════════════════════════════
+    // PRÉDICTIONS ORIGINALES (stockées pour référence)
+    // ═══════════════════════════════════════════════════════════════
 
-    // Prédiction fatigue originale : "normal" | "fatigué"
     @Column(length = 50)
     private String originalFatigueLabel;
 
-    // Confiance fatigue originale (0.0 - 1.0)
     private Double originalFatigueConfidence;
 
-    // Prédiction blessure originale : "risque faible" | "risque élevé"
     @Column(length = 50)
     private String originalInjuryLabel;
 
-    // Confiance blessure originale (0.0 - 1.0)
     private Double originalInjuryConfidence;
 
-    // Niveau de surcharge original : "NORMAL" | "MODÉRÉ" | "ÉLEVÉ" | "CRITIQUE"
     @Column(length = 20)
     private String originalOverloadLevel;
 
-    // ─────────────────────────────────────────────
-    // CORRECTIONS DU COACH
-    // ─────────────────────────────────────────────
+    // ═══════════════════════════════════════════════════════════════
+    // ✅ CORRECTIONS STRUCTURÉES (utilisées par le ML)
+    // ═══════════════════════════════════════════════════════════════
 
-    /**
-     * Le coach valide-t-il la prédiction fatigue ?
-     * true  = correct (IA avait raison)
-     * false = incorrect (IA s'est trompée)
-     * null  = non évalué par le coach
-     */
-    private Boolean fatiguePredictionCorrect;
-
-    /**
-     * Le coach valide-t-il la prédiction blessure ?
-     */
+    private Boolean fatiguePredictionCorrect;   // true/false/null
     private Boolean injuryPredictionCorrect;
-
-    /**
-     * Le coach valide-t-il le niveau de surcharge ?
-     */
     private Boolean overloadPredictionCorrect;
 
-    // Correction fatigue selon le coach : "normal" | "fatigué"
-    @Column(length = 50)
-    private String correctedFatigueLabel;
-
-    // Correction blessure selon le coach : "risque faible" | "risque élevé"
-    @Column(length = 50)
-    private String correctedInjuryLabel;
-
-    // Correction surcharge selon le coach : "NORMAL" | "MODÉRÉ" | "ÉLEVÉ" | "CRITIQUE"
     @Column(length = 20)
-    private String correctedOverloadLevel;
+    private String correctedFatigueLabel;       // "normal" ou "fatigué" UNIQUEMENT
 
-    // ─────────────────────────────────────────────
-    // NOTE GLOBALE DU COACH (1-5 étoiles)
-    // 1 = très mauvaise prédiction, 5 = parfaite
-    // ─────────────────────────────────────────────
-    private Integer coachRating; // 1-5
+    @Column(length = 20)
+    private String correctedInjuryLabel;        // "risque faible" ou "risque élevé" UNIQUEMENT
 
-    // Commentaire libre du coach
+    @Column(length = 20)
+    private String correctedOverloadLevel;      // "NORMAL","MODÉRÉ","ÉLEVÉ","CRITIQUE"
+
+    // ═══════════════════════════════════════════════════════════════
+    // NOTE ET OBSERVATIONS
+    // ═══════════════════════════════════════════════════════════════
+
+    private Integer coachRating;                // 1-5 étoiles
+
     @Column(length = 1000)
-    private String coachComment;
+    private String coachComment;                // 📝 TEXTE LIBRE (stocké seulement)
 
-    // ─────────────────────────────────────────────
-    // OBSERVATIONS DU COACH SUR L'ÉTAT DU MEMBRE
-    // ─────────────────────────────────────────────
-
-    /**
-     * Niveau de fatigue observé réellement par le coach (1-10).
-     * null = non renseigné.
-     */
-    private Integer observedFatigueLevel;
-
-    /**
-     * Le membre présentait-il des signes de blessure visibles ?
-     */
+    private Integer observedFatigueLevel;       // 0-10
     private Boolean injurySignsObserved;
 
-    /**
-     * Description des signes observés (douleur localisée, boiterie, etc.)
-     */
     @Column(length = 500)
     private String injuryObservationDetail;
 
-    /**
-     * Charge recommandée par le coach pour la prochaine séance.
-     * Peut différer de ce que l'IA suggère.
-     * null = pas de recommandation spécifique.
-     */
     private Double recommendedNextSessionLoad;
-
-    /**
-     * Repos recommandé par le coach (en jours).
-     * null = pas de repos particulier recommandé.
-     */
     private Integer recommendedRestDays;
 
-    // ─────────────────────────────────────────────
+    // ═══════════════════════════════════════════════════════════════
     // MÉTADONNÉES
-    // ─────────────────────────────────────────────
+    // ═══════════════════════════════════════════════════════════════
 
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;
-
-    /**
-     * Ce feedback a-t-il déjà été utilisé pour le réentraînement ?
-     */
     private Boolean usedForRetraining = false;
 
     @PrePersist
@@ -154,9 +97,9 @@ public class AIFeedback {
         this.updatedAt = LocalDateTime.now();
     }
 
-    // ─────────────────────────────────────────────
-    // GETTERS & SETTERS
-    // ─────────────────────────────────────────────
+    // ═══════════════════════════════════════════════════════════════
+    // GETTERS & SETTERS (tous)
+    // ═══════════════════════════════════════════════════════════════
 
     public Long getId() { return id; }
     public void setId(Long id) { this.id = id; }

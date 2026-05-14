@@ -1,0 +1,221 @@
+SMART GYM APPLICATION — PFE COMPLET
+Vue d'ensemble du projet
+Une application complète de gestion de gym intelligente avec prédictions IA pour détecter la fatigue et le risque de blessure des athlètes. L'application cible à la fois les membres (sportifs) et les coachs, disponible en mobile (Flutter) et web.
+
+ARCHITECTURE GLOBALE
+Flutter (Mobile + Web)
+        ↓
+Spring Boot (Backend - Java)
+        ↓
+    PostgreSQL (Base de données)
+        ↓
+FastAPI (Service IA - Python)
+
+PHASE 1 : MODULE IA (PYTHON + FASTAPI) — 100% TERMINÉ
+Datasets utilisés
+
+Fatigue : Exercise and Fitness Metrics Dataset (3864 lignes)
+Blessure : Collegiate Athlete Injury Dataset (200 lignes)
+
+Modèles entraînés
+
+Prédiction Fatigue : Random Forest
+
+Accuracy : 0.63
+Features : duration, bmi, age, gender
+Output : {"fatigue": 0/1, "label": "normal/fatigué", "confidence": 0.99}
+
+
+Prédiction Blessure : Random Forest + SMOTE (pour gérer le déséquilibre)
+
+Accuracy : 0.98
+Features : age, training_intensity, training_hours_per_week, recovery_days_per_week, fatigue_score, load_balance_score, acl_risk_score
+Output : {"injury_risk": 0/1, "label": "risque faible/élevé", "confidence": 0.79}
+
+
+
+Fichiers Python
+
+train.py : Entraîne les deux modèles avec SMOTE
+app.py : API FastAPI avec endpoints /predict_fatigue et /predict_injury
+test_api.py : Tests des endpoints
+
+Démarrage
+bashpython train.py
+uvicorn app:app --reload
+API disponible sur http://127.0.0.1:8000
+
+PHASE 2 : SPRING BOOT (BACKEND) — 95% TERMINÉ
+Stack technique
+
+Spring Boot 3.2.5
+Spring Security + JWT
+Spring Data JPA
+PostgreSQL
+Swagger/OpenAPI
+Maven
+
+Entités principales
+Member
+javaid, fullName, age, gender, weight, height, registrationDate
+OneToMany: Subscriptions, TrainingSessions
+TrainingSession
+javaid, date, duration, intensity, weightLifted
+fatigueScore, loadBalanceScore, aclRiskScore, recoveryDaysPerWeek
+ManyToOne: Member
+Subscription
+javaid, type, price, duration, startDate, endDate, status
+ManyToOne: Member
+User
+javaid, username, password, role (ADMIN/COACH/MEMBER)
+Services créés
+
+MemberService : CRUD + gestion
+TrainingSessionService : CRUD séances + getById()
+SubscriptionService : CRUD abonnements
+UserService : Authentification + UserDetailsService
+AIService : Appelle FastAPI via WebClient
+
+Sécurité
+
+JwtService : Génère tokens JWT (expiration 1h)
+JwtFilter : Valide tokens dans les requêtes
+SecurityConfig : Routes publiques (/auth/**) et protégées
+CorsConfig : Permet requêtes Flutter
+
+Controllers
+
+AuthController : /auth/register, /auth/login
+MemberController : CRUD members
+TrainingSessionController : CRUD séances
+SubscriptionController : CRUD abonnements
+AIController : /api/ai/predict/{memberId}/{sessionId}
+
+Configuration
+propertiesspring.datasource.url=jdbc:postgresql://localhost:5432/smart_gym_db
+spring.datasource.username=postgres
+spring.datasource.password=123456
+ai.service.url=http://127.0.0.1:8000
+Démarrage
+bashmvn spring-boot:run
+API disponible sur http://localhost:8080
+Swagger sur http://localhost:8080/swagger-ui/index.html
+
+PHASE 3 : FLUTTER (FRONTEND) — 60% TERMINÉ
+Dépendances
+yamlhttp: ^1.2.1
+shared_preferences: ^2.2.3
+Architecture
+lib/
+├── config/
+│   └── api_config.dart (baseUrl)
+├── services/
+│   ├── auth_service.dart (login/logout)
+│   └── member_service.dart (appels API)
+└── screens/
+    ├── login_screen.dart
+    ├── dashboard_screen.dart
+    └── new_session_screen.dart
+Services
+auth_service.dart
+
+login(username, password) → retourne token
+logout() → efface tout
+isLoggedIn() → vérifie si connecté
+getToken() → récupère le JWT
+
+member_service.dart
+
+getMemberById(id) → récupère profil
+getMemberSessions(memberId) → liste séances
+createSession(memberId, data) → crée séance
+getAIPrediction(memberId, sessionId) → appelle IA
+
+Écrans
+LoginScreen
+
+Champs : username, password
+Bouton "Se connecter"
+Gestion d'erreurs
+Navigation vers Dashboard après succès
+
+DashboardScreen
+
+Bienvenue avec nom du membre
+Alertes IA (fatigue + blessure) avec confidence
+Bouton "Nouvelle séance"
+Liste des 5 dernières séances
+Bouton logout en haut à droite
+
+NewSessionScreen
+
+Formulaire : durée, intensité, poids
+Soumet à Spring Boot
+Récupère prédictions IA
+Affiche résultats (fatigue + blessure)
+
+
+FLUX COMPLET D'UNE SÉANCE
+
+Utilisateur Flutter → Remplit formulaire (durée, intensité, poids)
+Flutter → POST /sessions/member/{memberId} à Spring Boot
+Spring Boot → Crée TrainingSession dans PostgreSQL
+Spring Boot → GET /api/ai/predict/{memberId}/{sessionId}
+Spring Boot → POST à FastAPI /predict_fatigue + /predict_injury
+FastAPI → Calcule BMI, formatte features, prédit
+FastAPI → Retourne {"fatigue": 1, "label": "fatigué", "confidence": 0.99}
+Spring Boot → Retourne réponse à Flutter
+Flutter → Affiche résultats dans NewSessionScreen
+
+
+TEST COMPLET
+Prérequis
+
+PostgreSQL démarré
+Base smart_gym_db créée
+
+Étapes de test
+
+Démarrer FastAPI : uvicorn app:app --reload
+Démarrer Spring Boot : mvn spring-boot:run
+Créer utilisateur via Swagger : POST /auth/register {username: "ahmed", password: "123456"}
+Créer membre : POST /members {fullName: "Ahmed", age: 25, gender: "MALE", weight: 80, height: 175}
+Lancer Flutter : flutter run
+Se connecter avec ahmed/123456
+Créer une séance (75min, intensité 8, 60kg)
+Voir les prédictions IA s'afficher
+
+Résultat attendu
+json{
+  "fatigue": {"fatigue": 1, "label": "fatigué", "confidence": 0.99},
+  "injury": {"injury_risk": 0, "label": "risque faible", "confidence": 0.79},
+  "memberId": 1,
+  "sessionId": 1
+}
+
+AVANCEMENT DU PROJET
+PartieStatus%Module IA✅ Terminé100%Spring Boot✅ Terminé100%Connexion Spring ↔ IA✅ Testée100%Flutter Login✅ Terminé100%Flutter Dashboard✅ Terminé100%Flutter Nouvelle séance✅ Terminé100%TOTAL✅ FONCTIONNEL~70%
+Ce qui reste
+
+Dashboard Coach
+Historique complet des séances
+Sécurité JWT complète (actuellement en test mode)
+Tests finaux et déploiement
+Documentation rapport PFE
+
+
+TECHNOLOGIES FINALES
+CoucheTechnologieFrontend MobileFlutterFrontend WebFlutter WebBackendSpring Boot 3.2.5 (Java)Base de donnéesPostgreSQLService IAFastAPI (Python)Modèles MLScikit-learn, XGBoost, SMOTEAuthentificationJWTAPI DocumentationSwagger/OpenAPI
+
+POINT FORT DE L'APPLICATION
+Le cœur "smart" fonctionne parfaitement : Flask envoie des données → Spring Boot les envoie à FastAPI → FastAPI prédit fatigue/blessure → résultat revient à l'utilisateur en temps réel avec un score de confiance.
+C'est un vrai système de prédiction IA fonctionnel, pas juste un prototype.
+
+PROCHAINES ÉTAPES POUR TERMINER
+
+Dashboard Coach (voir tous les membres + leurs alertes)
+Sécuriser complètement (remettre .authenticated())
+Tester sur vrai téléphone
+Déployer sur serveur (Heroku, AWS, etc.)
+Rédiger rapport PFE
+Préparer présentation
