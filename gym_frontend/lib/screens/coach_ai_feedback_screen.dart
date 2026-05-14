@@ -179,8 +179,13 @@ class _CoachAIFeedbackScreenState extends ConsumerState<CoachAIFeedbackScreen>
   Widget _buildGlobalStatsCard() {
     if (_globalStats == null) return const SizedBox.shrink();
 
-    final fatigueAccuracy = _globalStats!['fatigueAccuracyValue'] ?? 0.0;
-    final injuryAccuracy = _globalStats!['injuryAccuracyValue'] ?? 0.0;
+    // Après (le backend retourne 'fatigue' et 'injury' comme sous-objets) :
+    final fatigueMap = _globalStats!['fatigue'];
+    final injuryMap = _globalStats!['injury'];
+    final fatigueAccuracy =
+        (fatigueMap is Map ? fatigueMap['accuracyValue'] : null) ?? 0.0;
+    final injuryAccuracy =
+        (injuryMap is Map ? injuryMap['accuracyValue'] : null) ?? 0.0;
     final avgRating = _globalStats!['averageRating'] ?? 0.0;
     final pendingFeedbacks = _globalStats!['pendingRetrainingFeedbacks'] ?? 0;
     final qualityLabel = _globalStats!['qualityLabel'] ?? '';
@@ -380,8 +385,15 @@ class _CoachAIFeedbackScreenState extends ConsumerState<CoachAIFeedbackScreen>
         final member = _memberStats[index];
         final memberId = member['memberId'];
         final memberName = member['memberName'] ?? 'Membre #$memberId';
-        final fatigueAcc = member['fatigue']['accuracyValue'] ?? 0.0;
-        final injuryAcc = member['injury']['accuracyValue'] ?? 0.0;
+
+        // Après :
+        final fatigue = member['fatigue'];
+        final injury = member['injury'];
+        final fatigueAcc =
+            (fatigue is Map ? fatigue['accuracyValue'] : null) ?? 0.0;
+        final injuryAcc =
+            (injury is Map ? injury['accuracyValue'] : null) ?? 0.0;
+
         final avgRating = member['averageRating'] ?? 0.0;
         final correctionsCount = member['correctionsCount'] ?? 0;
 
