@@ -4,7 +4,11 @@ import '../services/message_service.dart';
 import '../services/auth_service.dart';
 
 // ─── Design tokens light ───
+const Color _kBg = Color(0xFFF4F6FA);
+const Color _kSurface = Color(0xFFFFFFFF);
+const Color _kSurf2 = Color(0xFFEEF1F8);
 const Color _kGreen = Color(0xFF00897B);
+const Color _kGreenL = Color(0xFFE0F2F1);
 const Color _kBlue = Color(0xFF1976D2);
 const Color _kRed = Color(0xFFE53935);
 const Color _kText = Color(0xFF1A2340);
@@ -94,7 +98,8 @@ class _CoachAdminMessagesScreenState extends State<CoachAdminMessagesScreen> {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
             content: Text("Erreur lors de l'envoi"),
-            backgroundColor: Colors.red,
+            backgroundColor: _kRed,
+            behavior: SnackBarBehavior.floating,
           ),
         );
       }
@@ -106,19 +111,53 @@ class _CoachAdminMessagesScreenState extends State<CoachAdminMessagesScreen> {
     return Scaffold(
       backgroundColor: Colors.transparent,
       appBar: AppBar(
-        title: const Row(
+        title: Row(
           children: [
-            Icon(Icons.admin_panel_settings, color: _kRed, size: 24),
-            SizedBox(width: 8),
-            Text('Administration', style: TextStyle(color: _kText)),
+            Container(
+              width: 36,
+              height: 36,
+              decoration: BoxDecoration(
+                color: _kRed.withValues(alpha: 0.12),
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(color: _kRed.withValues(alpha: 0.3)),
+              ),
+              child: const Icon(
+                Icons.admin_panel_settings,
+                color: _kRed,
+                size: 18,
+              ),
+            ),
+            const SizedBox(width: 10),
+            const Expanded(
+              child: Text(
+                'Administration',
+                style: TextStyle(
+                  color: _kText,
+                  fontWeight: FontWeight.w700,
+                  fontSize: 16,
+                ),
+              ),
+            ),
+            // Indicateur de polling actif
+            if (_pollingTimer?.isActive == true)
+              Container(
+                width: 8,
+                height: 8,
+                decoration: const BoxDecoration(
+                  color: _kGreen,
+                  shape: BoxShape.circle,
+                ),
+              ),
           ],
         ),
         backgroundColor: Colors.transparent,
         elevation: 0,
+        iconTheme: const IconThemeData(color: _kText),
         actions: [
           IconButton(
-            icon: const Icon(Icons.refresh, color: _kText),
+            icon: const Icon(Icons.refresh_rounded, color: _kTextSub),
             onPressed: () => _loadMessages(quiet: false),
+            tooltip: 'Actualiser',
           ),
         ],
       ),
@@ -136,6 +175,7 @@ class _CoachAdminMessagesScreenState extends State<CoachAdminMessagesScreen> {
                     itemBuilder: (_, i) => _buildBubble(_messages[i]),
                   ),
           ),
+          // CORRECTION #1 : _kSurface au lieu de _kText
           _buildInputBar(),
         ],
       ),
@@ -143,20 +183,32 @@ class _CoachAdminMessagesScreenState extends State<CoachAdminMessagesScreen> {
   }
 
   Widget _buildEmptyScreen() {
-    return const Center(
+    return Center(
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          Icon(Icons.chat_bubble_outline, size: 60, color: _kBorder),
-          SizedBox(height: 16),
-          Text(
-            'Aucun message avec l\'administration',
-            style: TextStyle(color: _kTextSub),
+          Container(
+            width: 64,
+            height: 64,
+            decoration: BoxDecoration(
+              color: _kSurf2,
+              borderRadius: BorderRadius.circular(20),
+            ),
+            child: const Icon(
+              Icons.chat_bubble_outline_rounded,
+              size: 30,
+              color: _kTextSub,
+            ),
           ),
-          SizedBox(height: 8),
-          Text(
-            'Envoyez un message, l\'admin vous répondra',
-            style: TextStyle(color: _kTextSub),
+          const SizedBox(height: 16),
+          const Text(
+            "Aucun message avec l'administration",
+            style: TextStyle(color: _kTextSub, fontSize: 14),
+          ),
+          const SizedBox(height: 8),
+          const Text(
+            "Envoyez un message, l'admin vous répondra",
+            style: TextStyle(color: _kTextSub, fontSize: 12),
           ),
         ],
       ),
@@ -181,13 +233,18 @@ class _CoachAdminMessagesScreenState extends State<CoachAdminMessagesScreen> {
             Stack(
               clipBehavior: Clip.none,
               children: [
-                const CircleAvatar(
-                  radius: 16,
-                  backgroundColor: _kRed,
-                  child: Icon(
+                Container(
+                  width: 32,
+                  height: 32,
+                  decoration: BoxDecoration(
+                    color: _kRed.withValues(alpha: 0.12),
+                    borderRadius: BorderRadius.circular(10),
+                    border: Border.all(color: _kRed.withValues(alpha: 0.3)),
+                  ),
+                  child: const Icon(
                     Icons.admin_panel_settings,
-                    size: 14,
-                    color: _kText,
+                    size: 16,
+                    color: _kRed,
                   ),
                 ),
                 if (isUnread)
@@ -200,10 +257,7 @@ class _CoachAdminMessagesScreenState extends State<CoachAdminMessagesScreen> {
                       decoration: BoxDecoration(
                         color: _kGreen,
                         shape: BoxShape.circle,
-                        border: Border.all(
-                          color: const Color(0xFFFFFFFF),
-                          width: 1.5,
-                        ),
+                        border: Border.all(color: _kSurface, width: 1.5),
                       ),
                     ),
                   ),
@@ -219,11 +273,12 @@ class _CoachAdminMessagesScreenState extends State<CoachAdminMessagesScreen> {
               children: [
                 Container(
                   padding: const EdgeInsets.symmetric(
-                    horizontal: 16,
+                    horizontal: 14,
                     vertical: 10,
                   ),
                   decoration: BoxDecoration(
-                    color: isMe ? _kBlue : const Color(0xFFEEF1F8),
+                    // Coach (moi) = bleu, Admin = gris clair
+                    color: isMe ? _kBlue : _kSurf2,
                     borderRadius: BorderRadius.only(
                       topLeft: const Radius.circular(16),
                       topRight: const Radius.circular(16),
@@ -232,14 +287,19 @@ class _CoachAdminMessagesScreenState extends State<CoachAdminMessagesScreen> {
                     ),
                     border: (!isMe && isUnread)
                         ? Border.all(
-                            color: _kGreen.withValues(alpha: 0.5),
+                            color: _kGreen.withValues(alpha: 0.4),
                             width: 1.5,
                           )
                         : null,
                   ),
                   child: Text(
                     message['content'] ?? '',
-                    style: const TextStyle(color: _kText),
+                    style: TextStyle(
+                      // Texte blanc sur bleu, texte foncé sur gris
+                      color: isMe ? Colors.white : _kText,
+                      fontSize: 14,
+                      height: 1.4,
+                    ),
                   ),
                 ),
                 const SizedBox(height: 4),
@@ -253,8 +313,8 @@ class _CoachAdminMessagesScreenState extends State<CoachAdminMessagesScreen> {
                     if (isMe) ...[
                       const SizedBox(width: 4),
                       Icon(
-                        isUnread ? Icons.done : Icons.done_all,
-                        size: 12,
+                        isUnread ? Icons.done_rounded : Icons.done_all_rounded,
+                        size: 13,
                         color: isUnread ? _kTextSub : _kGreen,
                       ),
                     ],
@@ -266,10 +326,15 @@ class _CoachAdminMessagesScreenState extends State<CoachAdminMessagesScreen> {
           // Avatar coach (droite)
           if (isMe) ...[
             const SizedBox(width: 8),
-            const CircleAvatar(
-              radius: 16,
-              backgroundColor: _kBlue,
-              child: Icon(Icons.sports, size: 14, color: _kText),
+            Container(
+              width: 32,
+              height: 32,
+              decoration: BoxDecoration(
+                color: _kBlue.withValues(alpha: 0.12),
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(color: _kBlue.withValues(alpha: 0.3)),
+              ),
+              child: const Icon(Icons.sports_rounded, size: 16, color: _kBlue),
             ),
           ],
         ],
@@ -277,12 +342,20 @@ class _CoachAdminMessagesScreenState extends State<CoachAdminMessagesScreen> {
     );
   }
 
+  // CORRECTION #1 : fond _kSurface (blanc) au lieu de _kText (bleu foncé)
   Widget _buildInputBar() {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-      decoration: const BoxDecoration(
-        color: _kText,
-        border: Border(top: BorderSide(color: _kBorder)),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      decoration: BoxDecoration(
+        color: _kSurface, // ✅ CORRIGÉ : était _kText (noir)
+        border: const Border(top: BorderSide(color: _kBorder, width: 0.5)),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.04),
+            blurRadius: 8,
+            offset: const Offset(0, -2),
+          ),
+        ],
       ),
       child: Row(
         children: [
@@ -291,12 +364,14 @@ class _CoachAdminMessagesScreenState extends State<CoachAdminMessagesScreen> {
               controller: _messageController,
               style: const TextStyle(color: _kText),
               maxLines: null,
+              // CORRECTION #2 : textInputAction ajouté
+              textInputAction: TextInputAction.send,
               onSubmitted: (_) => _sendMessage(),
               decoration: InputDecoration(
-                hintText: 'Message à l\'administration...',
+                hintText: "Message à l'administration...",
                 hintStyle: const TextStyle(color: _kTextSub),
                 filled: true,
-                fillColor: const Color(0xFFF4F6FA),
+                fillColor: _kSurf2,
                 border: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(24),
                   borderSide: BorderSide.none,
@@ -309,11 +384,27 @@ class _CoachAdminMessagesScreenState extends State<CoachAdminMessagesScreen> {
             ),
           ),
           const SizedBox(width: 8),
-          CircleAvatar(
-            backgroundColor: _kRed,
-            child: IconButton(
-              icon: const Icon(Icons.send, color: _kText, size: 20),
-              onPressed: _sendMessage,
+          GestureDetector(
+            onTap: _sendMessage,
+            child: Container(
+              width: 44,
+              height: 44,
+              decoration: BoxDecoration(
+                color: _kBlue, // Bouton bleu pour le coach
+                borderRadius: BorderRadius.circular(22),
+                boxShadow: [
+                  BoxShadow(
+                    color: _kBlue.withValues(alpha: 0.3),
+                    blurRadius: 8,
+                    offset: const Offset(0, 2),
+                  ),
+                ],
+              ),
+              child: const Icon(
+                Icons.send_rounded,
+                color: Colors.white,
+                size: 20,
+              ),
             ),
           ),
         ],
@@ -325,7 +416,15 @@ class _CoachAdminMessagesScreenState extends State<CoachAdminMessagesScreen> {
     if (dateTime == null) return '';
     try {
       final dt = DateTime.parse(dateTime);
-      return '${dt.hour.toString().padLeft(2, '0')}:${dt.minute.toString().padLeft(2, '0')}';
+      final now = DateTime.now();
+      final diff = now.difference(dt);
+      if (diff.inDays > 0) {
+        return '${dt.day}/${dt.month} '
+            '${dt.hour.toString().padLeft(2, '0')}:'
+            '${dt.minute.toString().padLeft(2, '0')}';
+      }
+      return '${dt.hour.toString().padLeft(2, '0')}:'
+          '${dt.minute.toString().padLeft(2, '0')}';
     } catch (_) {
       return '';
     }

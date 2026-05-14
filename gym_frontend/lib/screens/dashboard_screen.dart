@@ -12,6 +12,7 @@ import 'new_session_screen.dart';
 import 'sessions_history_screen.dart';
 import 'login_screen.dart';
 import 'messages_screen.dart';
+import 'unified_profile_screen.dart';
 
 const Color _kBg = Color(0xFFF4F6FA);
 const Color _kSurface = Color(0xFFFFFFFF);

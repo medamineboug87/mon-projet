@@ -3,11 +3,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../services/auth_service.dart';
-import 'profile_screen.dart';
 import 'subscription_screen.dart';
-import 'ai_profile_screen.dart';
 import 'workout_plan_screen.dart';
 import 'login_screen.dart';
+import 'unified_profile_screen.dart';
 
 const Color _kSurface = Color(0xFFFFFFFF);
 const Color _kSurf2 = Color(0xFFEEF1F8);
@@ -43,12 +42,12 @@ class ProfileTab extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final menuItems = [
       ProfileMenuItem(
-        icon: Icons.person_outline_rounded,
+        icon: Icons.person_rounded,
         title: 'Mon profil',
-        subtitle: 'Informations personnelles',
+        subtitle: 'Infos, objectif, santé',
         color: _kBlue,
         bgColor: _kBlueL,
-        screen: ProfileScreen(memberId: memberId),
+        screen: UnifiedProfileScreen(memberId: memberId),
       ),
       ProfileMenuItem(
         icon: Icons.card_membership_rounded,
@@ -58,14 +57,7 @@ class ProfileTab extends ConsumerWidget {
         bgColor: _kGreenL,
         screen: SubscriptionScreen(memberId: memberId),
       ),
-      ProfileMenuItem(
-        icon: Icons.auto_awesome_rounded,
-        title: 'Profil IA',
-        subtitle: 'Objectif, sommeil, stress, santé',
-        color: _kPurple,
-        bgColor: _kPurpleL,
-        screen: AIProfileScreen(memberId: memberId),
-      ),
+
       ProfileMenuItem(
         icon: Icons.calendar_month_rounded,
         title: "Plans d'entraînement",

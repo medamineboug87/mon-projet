@@ -12,7 +12,7 @@ import '../widgets/exercise_section/exercise_entry_model.dart';
 import '../widgets/exercise_section/exercise_form_dialog.dart';
 import '../widgets/exercise_section/exercise_picker_sheet.dart';
 import '../config/api_config.dart';
-import 'ai_profile_screen.dart';
+import 'unified_profile_screen.dart';
 
 // ─── Design tokens ───
 const Color _kBg = Color(0xFFF4F6FA);
@@ -402,7 +402,7 @@ class _NewSessionScreenState extends State<NewSessionScreen>
             onTap: () => Navigator.push(
               context,
               MaterialPageRoute(
-                builder: (_) => AIProfileScreen(memberId: widget.memberId),
+                builder: (_) => UnifiedProfileScreen(memberId: widget.memberId),
               ),
             ).then((_) => _checkProfile()),
           ),
