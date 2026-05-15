@@ -89,33 +89,51 @@ public class AIService {
     public Map<String, Object> predictFatigueWithAI(Member member,
                                                     List<TrainingSession> sessions) {
         try {
-            MemberProfile profile    = memberProfileRepository.findByMemberId(member.getId()).orElse(null);
-            TrainingSession lastSes  = sessions.isEmpty() ? null : sessions.get(0);
+            MemberProfile profile   = memberProfileRepository.findByMemberId(member.getId()).orElse(null);
+            TrainingSession lastSes = sessions.isEmpty() ? null : sessions.get(0);
+
+            // ── CORRECTION #1 : totalDuration calculé et envoyé explicitement ──
+            double duration           = lastSes != null ? lastSes.getDuration() : 60;
+            double cardioDuration     = lastSes != null ? lastSes.getCardioDurationMinutes() : 0;
+            double totalDuration      = duration + cardioDuration;
+
+            // ── CORRECTION #2 : painLevel inclus et documenté ──
+            // painLevel est utilisé côté Python comme multiplicateur post-modèle
+            // (pas dans FATIGUE_FEATURES ML) — envoyé pour l'ajustement du score final
+            int painLevel = lastSes != null && lastSes.getPainLevel() != null
+                    ? lastSes.getPainLevel() : 0;
 
             Map<String, Object> request = new HashMap<>();
+            // Champs du modèle ML (mappés dans FATIGUE_FEATURES Python)
             request.put("age",                   member.getAge());
             request.put("bmi",                   calculateBMI(member));
             request.put("gender",                "MALE".equalsIgnoreCase(member.getGender()) ? 1 : 0);
-            request.put("duration",              lastSes != null ? lastSes.getDuration() : 60);
+            request.put("duration",              duration);
+            request.put("totalDuration",         totalDuration);   // FIX: toujours calculé
             request.put("weightLifted",          getEffectiveWeight(lastSes));
             request.put("intensity",             lastSes != null ? lastSes.getIntensity() : 5);
             request.put("hasCardio",             lastSes != null && lastSes.getHasCardio() ? 1 : 0);
-            request.put("cardioDurationMinutes", lastSes != null ? lastSes.getCardioDurationMinutes() : 0);
+            request.put("cardioDurationMinutes", cardioDuration);
             request.put("cardioIntensity",       lastSes != null ? lastSes.getCardioIntensity() : 0);
             request.put("muscleRiskScore",       lastSes != null && lastSes.getExerciseBasedMuscleRiskScore() != null
                     ? lastSes.getExerciseBasedMuscleRiskScore() : 1.0);
             request.put("recoveryDaysPerWeek",   lastSes != null && lastSes.getRecoveryDaysPerWeek() != null
                     ? lastSes.getRecoveryDaysPerWeek() : 2);
-            request.put("fitnessLevel",          profile != null && profile.getSelfDeclaredLevel() != null
-                    ? profile.getSelfDeclaredLevel().name() : "BEGINNER");
-            request.put("avgSleepHours",         profile != null && profile.getAvgSleepHours() != null
-                    ? profile.getAvgSleepHours() : 7.0);
-            request.put("stressLevel",           profile != null && profile.getStressLevel() != null
-                    ? profile.getStressLevel() : 5);
-            request.put("painLevel",             lastSes != null && lastSes.getPainLevel() != null
-                    ? lastSes.getPainLevel() : 0);
 
-            log.info("📤 Appel Python /predict_fatigue pour memberId={}", member.getId());
+            // Champs de personnalisation (multiplicateurs post-modèle côté Python)
+            // ⚠ Ces champs ne font PAS partie de FATIGUE_FEATURES du modèle ML —
+            //   ils sont utilisés par Python pour ajuster le score final via des multiplicateurs
+            //   (fitnessLevel → level_multiplier, avgSleepHours → sleep_multiplier, etc.)
+            request.put("fitnessLevel",      profile != null && profile.getSelfDeclaredLevel() != null
+                    ? profile.getSelfDeclaredLevel().name() : "BEGINNER");
+            request.put("avgSleepHours",     profile != null && profile.getAvgSleepHours() != null
+                    ? profile.getAvgSleepHours() : 7.0);
+            request.put("stressLevel",       profile != null && profile.getStressLevel() != null
+                    ? profile.getStressLevel() : 5);
+            request.put("painLevel",         painLevel); // multiplicateur post-modèle
+
+            log.info("📤 Appel Python /predict_fatigue — memberId={} | duration={} | totalDuration={} | painLevel={}",
+                    member.getId(), duration, totalDuration, painLevel);
 
             Map<String, Object> response = webClient.post()
                     .uri("/predict_fatigue")
@@ -126,11 +144,12 @@ public class AIService {
                     .block();
 
             if (response != null) {
-                log.info("✅ Réponse Python fatigue: {}", response.get("label"));
+                log.info("✅ Réponse Python fatigue: label={} | proba={}",
+                        response.get("label"), response.get("proba_fatigued"));
                 return response;
             }
         } catch (WebClientResponseException e) {
-            log.error("❌ Erreur HTTP appel Python: {} - {}", e.getStatusCode(), e.getResponseBodyAsString());
+            log.error("❌ Erreur HTTP appel Python fatigue: {} - {}", e.getStatusCode(), e.getResponseBodyAsString());
         } catch (Exception e) {
             log.warn("⚠️ Service IA indisponible pour fatigue, fallback heuristique: {}", e.getMessage());
         }
@@ -143,13 +162,14 @@ public class AIService {
         Map<String, Object> result = new LinkedHashMap<>();
 
         if (sessions == null || sessions.isEmpty()) {
-            result.put("fatigueScore",       5.0);
-            result.put("label",              "normal");
-            result.put("confidence",         0.8);
-            result.put("message",            "Pas assez de données pour analyser la fatigue");
-            result.put("exerciseCount",      0);
+            result.put("fatigueScore",        5.0);
+            result.put("label",               "normal");
+            result.put("confidence",          0.8);
+            result.put("message",             "Pas assez de données pour analyser la fatigue");
+            result.put("exerciseCount",       0);
             result.put("effectiveWeightUsed", 0);
-            result.put("muscleRiskSource",   "NONE");
+            result.put("muscleRiskSource",    "NONE");
+            result.put("source",              "HEURISTIC_NO_DATA");
             return result;
         }
 
@@ -179,12 +199,15 @@ public class AIService {
                 stressMultiplier = 1.1;
         }
 
+        // ── CORRECTION #3 : painMultiplier cohérent avec app.py ──
+        double painMultiplier = painLevel > 3 ? 1.0 + (painLevel / 20.0) : 1.0;
+
         double fatigueScore = (sessionCount * 0.25)
                 + (totalIntensity * 0.3)
                 + (totalVolume / 1000 * 0.2)
                 + (avgDuration / 60 * 0.15)
                 + (painLevel / 10.0) * 0.1;
-        fatigueScore = fatigueScore * levelMultiplier * sleepMultiplier * stressMultiplier;
+        fatigueScore = fatigueScore * levelMultiplier * sleepMultiplier * stressMultiplier * painMultiplier;
         fatigueScore = Math.min(10.0, Math.max(1.0, fatigueScore));
         boolean isFatigued = fatigueScore > 6.0;
 
@@ -199,10 +222,12 @@ public class AIService {
         result.put("effectiveWeightUsed", effectiveWeight);
         result.put("muscleRiskSource",    exerciseCount > 0 ? "EXERCICES_RÉELS" : "GLOBAL");
         result.put("fitnessLevel",        fitnessLevel);
+        result.put("source",              "HEURISTIC");
         result.put("fatigueMultipliers",  Map.of(
                 "level",  levelMultiplier,
                 "sleep",  sleepMultiplier,
-                "stress", stressMultiplier
+                "stress", stressMultiplier,
+                "pain",   painMultiplier
         ));
 
         return result;
@@ -218,6 +243,7 @@ public class AIService {
             MemberProfile profile = memberProfileRepository.findByMemberId(member.getId()).orElse(null);
 
             Map<String, Object> request = new HashMap<>();
+            // Champs du modèle ML (mappés dans INJURY_FEATURES Python)
             request.put("Age",                      member.getAge());
             request.put("Training_Intensity",        calculateAverageIntensity(sessions));
             request.put("Training_Hours_Per_Week",   calculateTrainingHoursPerWeek(sessions));
@@ -233,14 +259,18 @@ public class AIService {
             request.put("MuscleRiskScore",           getAverageMuscleRiskScore(sessions));
             request.put("Gender",                    "MALE".equalsIgnoreCase(member.getGender()) ? 1 : 0);
             request.put("BMI",                       calculateBMI(member));
-            request.put("fitnessLevel",              profile != null && profile.getSelfDeclaredLevel() != null
+
+            // Champs de personnalisation (multiplicateurs post-modèle côté Python)
+            // ⚠ Même remarque que pour fatigue : ne font PAS partie de INJURY_FEATURES ML
+            request.put("fitnessLevel",  profile != null && profile.getSelfDeclaredLevel() != null
                     ? profile.getSelfDeclaredLevel().name() : "BEGINNER");
-            request.put("avgSleepHours",             profile != null && profile.getAvgSleepHours() != null
+            request.put("avgSleepHours", profile != null && profile.getAvgSleepHours() != null
                     ? profile.getAvgSleepHours() : 7.0);
-            request.put("stressLevel",               profile != null && profile.getStressLevel() != null
+            request.put("stressLevel",   profile != null && profile.getStressLevel() != null
                     ? profile.getStressLevel() : 5);
 
-            log.info("📤 Appel Python /predict_injury pour memberId={}", member.getId());
+            log.info("📤 Appel Python /predict_injury — memberId={} | sessions={} | ACL={}",
+                    member.getId(), sessions.size(), request.get("ACL_Risk_Score"));
 
             Map<String, Object> response = webClient.post()
                     .uri("/predict_injury")
@@ -251,11 +281,12 @@ public class AIService {
                     .block();
 
             if (response != null) {
-                log.info("✅ Réponse Python injury: {}", response.get("label"));
+                log.info("✅ Réponse Python injury: label={} | riskLevel={}",
+                        response.get("label"), response.get("risk_level"));
                 return response;
             }
         } catch (WebClientResponseException e) {
-            log.error("❌ Erreur HTTP appel Python: {} - {}", e.getStatusCode(), e.getResponseBodyAsString());
+            log.error("❌ Erreur HTTP appel Python injury: {} - {}", e.getStatusCode(), e.getResponseBodyAsString());
         } catch (Exception e) {
             log.warn("⚠️ Service IA indisponible pour blessure, fallback heuristique: {}", e.getMessage());
         }
@@ -275,6 +306,7 @@ public class AIService {
             result.put("injury_risk",   0);
             result.put("risk_level",    "FAIBLE");
             result.put("proba_injured", 0.25);
+            result.put("source",        "HEURISTIC_NO_DATA");
             return result;
         }
 
@@ -298,7 +330,6 @@ public class AIService {
                 && profile.getCurrentInjuries() != null
                 && !profile.getCurrentInjuries().isBlank();
 
-        // Risque de progression rapide
         double rapidProgressionRisk = 0.0;
         for (TrainingSession session : sessions) {
             List<SessionExercise> exercises = session.getExercises();
@@ -311,12 +342,9 @@ public class AIService {
         }
         rapidProgressionRisk = Math.min(0.5, rapidProgressionRisk);
 
-        // Déséquilibre musculaire
         Map<String, Object> imbalanceRisk = detectMuscleImbalance(member, sessions);
         double imbalanceScore = (Double) imbalanceRisk.getOrDefault("riskScore", 0.0);
 
-        // Récupération musculaire — valeur neutre
-        // (le détail est maintenant géré par MuscleRecoveryService)
         double recoveryScore = 0.1;
 
         double injuryRisk = (fatigueScore / 10) * 0.25
@@ -324,22 +352,23 @@ public class AIService {
                 + rapidProgressionRisk * 0.2
                 + imbalanceScore * 0.2
                 + recoveryScore * 0.1;
-        if (hasChronicPain)    injuryRisk += 0.15;
-        if (hasInjuryHistory)  injuryRisk += 0.2;
+        if (hasChronicPain)   injuryRisk += 0.15;
+        if (hasInjuryHistory) injuryRisk += 0.2;
         injuryRisk = injuryRisk * levelRiskMultiplier;
         injuryRisk = Math.min(0.95, Math.max(0.05, injuryRisk));
 
         String riskLevel = injuryRisk > 0.7 ? "ÉLEVÉ"  : (injuryRisk > 0.4 ? "MODÉRÉ" : "FAIBLE");
         String label     = injuryRisk > 0.7 ? "risque élevé" : (injuryRisk > 0.4 ? "risque modéré" : "risque faible");
 
-        result.put("injuryRisk",    Math.round(injuryRisk * 100.0) / 100.0);
-        result.put("label",         label);
-        result.put("riskLevel",     riskLevel);
-        result.put("confidence",    Math.min(0.9, 0.5 + injuryRisk));
+        result.put("injuryRisk",      Math.round(injuryRisk * 100.0) / 100.0);
+        result.put("label",           label);
+        result.put("riskLevel",       riskLevel);
+        result.put("confidence",      Math.min(0.9, 0.5 + injuryRisk));
         result.put("muscleImbalance", imbalanceRisk);
-        result.put("injury_risk",   injuryRisk > 0.5 ? 1 : 0);
-        result.put("risk_level",    riskLevel);
-        result.put("proba_injured", injuryRisk);
+        result.put("injury_risk",     injuryRisk > 0.5 ? 1 : 0);
+        result.put("risk_level",      riskLevel);
+        result.put("proba_injured",   injuryRisk);
+        result.put("source",          "HEURISTIC");
 
         return result;
     }
@@ -365,11 +394,10 @@ public class AIService {
                 && !lastSession.getExercises().isEmpty();
 
         if (weightProgressPct != null) {
-            analysis.put("weightProgressionPercent",             Math.round(weightProgressPct * 10.0) / 10.0);
+            analysis.put("weightProgressionPercent",              Math.round(weightProgressPct * 10.0) / 10.0);
             analysis.put("weightProgressionBasedOnRealExercises", usedRealExercises);
         }
 
-        // Progression par exercice
         Map<String, Object> exerciseProgressions = calculateExerciseProgressions(member, lastSession);
         analysis.put("exerciseProgressions", exerciseProgressions);
 
@@ -384,11 +412,10 @@ public class AIService {
             if (maxProgressionPct > 20) {
                 recommendations.add("🔴 Progression très rapide détectée. Réduisez les charges.");
             } else {
-                recommendations.add("💡 Progression plus rapide que recommandé.");
+                recommendations.add("💡 Progression plus rapide que recommandé. Soyez prudent.");
             }
         }
 
-        // Déséquilibre musculaire
         Map<String, Object> imbalance = detectMuscleImbalance(member, previousSessions);
         if (Boolean.TRUE.equals(imbalance.get("hasImbalance"))) {
             @SuppressWarnings("unchecked")
@@ -396,7 +423,6 @@ public class AIService {
             if (imbalanceWarnings != null) warnings.addAll(imbalanceWarnings);
         }
 
-        // Note vers le nouveau système de récupération
         recommendations.add("💡 Consultez /api/ai/recovery/" + member.getId()
                 + " pour l'analyse de récupération musculaire détaillée.");
 
@@ -406,7 +432,6 @@ public class AIService {
             recommendations.add("🏆 Athlète : votre récupération est plus rapide.");
         }
 
-        // Résumé des exercices
         List<Map<String, Object>> exerciseSummary = buildExerciseSummary(lastSession);
         if (!exerciseSummary.isEmpty()) {
             analysis.put("exerciseDetails",       exerciseSummary);
@@ -424,12 +449,12 @@ public class AIService {
                 ? previousSessions.stream().mapToInt(TrainingSession::getDuration).sum() : 0)
                 + (lastSession != null ? lastSession.getDuration() : 0);
 
-        analysis.put("sessionCount",         sessionCount);
-        analysis.put("totalMinutes",         totalMinutes);
-        analysis.put("riskLevel",            getRiskLevelFromWarnings(warnings));
-        analysis.put("warnings",             warnings);
-        analysis.put("recommendations",      recommendations);
-        analysis.put("fitnessLevel",         fitnessLevel);
+        analysis.put("sessionCount",    sessionCount);
+        analysis.put("totalMinutes",    totalMinutes);
+        analysis.put("riskLevel",       getRiskLevelFromWarnings(warnings));
+        analysis.put("warnings",        warnings);
+        analysis.put("recommendations", recommendations);
+        analysis.put("fitnessLevel",    fitnessLevel);
 
         return analysis;
     }
@@ -446,11 +471,11 @@ public class AIService {
 
         List<SessionExercise> currentExercises = lastSession.getExercises();
         if (currentExercises == null || currentExercises.isEmpty()) {
-            result.put("alerts",             alerts);
-            result.put("progressions",       progressions);
+            result.put("alerts",              alerts);
+            result.put("progressions",        progressions);
             result.put("hasRapidProgression", false);
-            result.put("maxProgressionPct",  0.0);
-            result.put("note",               "Aucun exercice détaillé");
+            result.put("maxProgressionPct",   0.0);
+            result.put("note",                "Aucun exercice détaillé");
             return result;
         }
 
@@ -472,13 +497,13 @@ public class AIService {
 
             if (history.isEmpty()) {
                 Map<String, Object> point = new LinkedHashMap<>();
-                point.put("exerciseName", exerciseName);
-                point.put("muscleName",   currentEx.getMuscleName());
+                point.put("exerciseName",  exerciseName);
+                point.put("muscleName",    currentEx.getMuscleName());
                 point.put("currentWeight", currentEx.getWeightKg());
-                point.put("previousAvg",  null);
+                point.put("previousAvg",   null);
                 point.put("progressionPct", null);
-                point.put("status",       "NEW");
-                point.put("note",         "Premier enregistrement");
+                point.put("status",        "NEW");
+                point.put("note",          "Premier enregistrement");
                 progressions.add(point);
                 continue;
             }
@@ -512,17 +537,17 @@ public class AIService {
             }
 
             Map<String, Object> point = new LinkedHashMap<>();
-            point.put("exerciseName",       exerciseName);
-            point.put("muscleName",         currentEx.getMuscleName());
-            point.put("currentWeight",      currentWeight);
-            point.put("previousAvg",        Math.round(avgPreviousWeight * 10.0) / 10.0);
-            point.put("progressionPct",     progressionPct);
-            point.put("safeThreshold",      safeThreshold);
-            point.put("allTimeMax",         allTimeMax != null ? allTimeMax : currentWeight);
+            point.put("exerciseName",        exerciseName);
+            point.put("muscleName",          currentEx.getMuscleName());
+            point.put("currentWeight",       currentWeight);
+            point.put("previousAvg",         Math.round(avgPreviousWeight * 10.0) / 10.0);
+            point.put("progressionPct",      progressionPct);
+            point.put("safeThreshold",       safeThreshold);
+            point.put("allTimeMax",          allTimeMax != null ? allTimeMax : currentWeight);
             point.put("isNewPersonalRecord", allTimeMax != null && currentWeight > allTimeMax);
-            point.put("status",             status);
-            point.put("rpe",                currentEx.getRpe());
-            point.put("failureReached",     currentEx.getFailureReached());
+            point.put("status",              status);
+            point.put("rpe",                 currentEx.getRpe());
+            point.put("failureReached",      currentEx.getFailureReached());
 
             if (progressionPct > maxProgressionPct) maxProgressionPct = progressionPct;
             progressions.add(point);
@@ -536,17 +561,17 @@ public class AIService {
             return Integer.compare(oa, ob);
         });
 
-        result.put("alerts",              alerts);
-        result.put("progressions",        progressions);
-        result.put("hasRapidProgression", !alerts.isEmpty());
-        result.put("maxProgressionPct",   Math.round(maxProgressionPct * 10.0) / 10.0);
+        result.put("alerts",               alerts);
+        result.put("progressions",         progressions);
+        result.put("hasRapidProgression",  !alerts.isEmpty());
+        result.put("maxProgressionPct",    Math.round(maxProgressionPct * 10.0) / 10.0);
         result.put("totalExercisesTracked", progressions.size());
 
         return result;
     }
 
     // ════════════════════════════════════════════════════════════════
-    // JOURS DE REPOS RECOMMANDÉS (résumé global — détail dans MuscleRecoveryService)
+    // JOURS DE REPOS RECOMMANDÉS
     // ════════════════════════════════════════════════════════════════
 
     public int getRecommendedRestDays(MemberProfile profile, TrainingSession session) {
@@ -726,10 +751,10 @@ public class AIService {
             riskScore += 0.2;
         }
 
-        result.put("hasImbalance",  !warnings.isEmpty());
-        result.put("riskScore",     Math.min(0.5, riskScore));
-        result.put("warnings",      warnings);
-        result.put("groupVolumes",  groupVolume);
+        result.put("hasImbalance", !warnings.isEmpty());
+        result.put("riskScore",    Math.min(0.5, riskScore));
+        result.put("warnings",     warnings);
+        result.put("groupVolumes", groupVolume);
         return result;
     }
 
@@ -782,18 +807,18 @@ public class AIService {
         for (SessionExercise ex : exercises) {
             if (ex.getExerciseName() == null || ex.getExerciseName().isBlank()) continue;
             Map<String, Object> exData = new LinkedHashMap<>();
-            exData.put("exerciseName",  ex.getExerciseName());
-            exData.put("muscleName",    ex.getMuscleName());
-            exData.put("weightKg",      ex.getWeightKg());
-            exData.put("reps",          ex.getRepsCompleted());
-            exData.put("sets",          ex.getSetsCompleted());
-            exData.put("rpe",           ex.getRpe());
+            exData.put("exerciseName",   ex.getExerciseName());
+            exData.put("muscleName",     ex.getMuscleName());
+            exData.put("weightKg",       ex.getWeightKg());
+            exData.put("reps",           ex.getRepsCompleted());
+            exData.put("sets",           ex.getSetsCompleted());
+            exData.put("rpe",            ex.getRpe());
             exData.put("failureReached", ex.getFailureReached());
 
             if (ex.getWeightKg() != null && ex.getRepsCompleted() != null) {
-                int reps    = parseReps(ex.getRepsCompleted());
-                int sets    = ex.getSetsCompleted() != null ? ex.getSetsCompleted() : 1;
-                double vol  = ex.getWeightKg() * reps * sets;
+                int reps   = parseReps(ex.getRepsCompleted());
+                int sets   = ex.getSetsCompleted() != null ? ex.getSetsCompleted() : 1;
+                double vol = ex.getWeightKg() * reps * sets;
                 exData.put("volume", Math.round(vol));
                 String chargeLevel = ex.getWeightKg() >= 100 ? "TRÈS ÉLEVÉE"
                         : ex.getWeightKg() >= 70 ? "ÉLEVÉE"
