@@ -17,7 +17,7 @@ import java.util.Map;
 
 @RestController
 @RequestMapping("/payments")
-@CrossOrigin
+@CrossOrigin(origins = "*")
 public class PaymentController {
 
     private final PaymentService paymentService;

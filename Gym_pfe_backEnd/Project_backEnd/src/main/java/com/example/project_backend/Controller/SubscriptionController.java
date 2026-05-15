@@ -11,7 +11,7 @@ import java.util.Map;
 
 @RestController
 @RequestMapping("/subscriptions")
-@CrossOrigin
+@CrossOrigin(origins = "*")
 public class SubscriptionController {
 
     private final SubscriptionService subscriptionService;

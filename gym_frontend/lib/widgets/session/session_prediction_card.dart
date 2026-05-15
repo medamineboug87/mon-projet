@@ -33,7 +33,10 @@ class SessionPredictionCard extends StatelessWidget {
     final exerciseCount = fatigue?['exerciseCount'] ?? 0;
     final muscleRiskSource = fatigue?['muscleRiskSource'] ?? '';
     final effectiveWeight = fatigue?['effectiveWeightUsed'] ?? 0;
-    final recommendedRestDays = overload?['recommendedRestDays'] ?? 0;
+
+    // ✅ Utiliser remainingRestDays (dynamique) au lieu de recommendedRestDays
+    final remainingRestDays = prediction['remainingRestDays'] ?? 0;
+    final restMessage = prediction['restMessage'] ?? '';
 
     final riskColor = _getRiskColor(riskLevel);
 
@@ -54,14 +57,21 @@ class SessionPredictionCard extends StatelessWidget {
           _buildFatigueInjuryRow(fatigueLbl, injuryLbl, fatigue, injury),
           const SizedBox(height: 10),
           ProgressionCard(overload: overload ?? {}),
-          if (recommendedRestDays > 0)
-            RestRecommendationCard(days: recommendedRestDays),
+
+          // ✅ UN SEUL affichage du repos, avec remainingRestDays
+          if (remainingRestDays > 0)
+            RestRecommendationCard(days: remainingRestDays),
+
+          // ✅ Afficher le message personnalisé si la récupération est terminée
+          if (remainingRestDays == 0 && restMessage.isNotEmpty)
+            _buildRecoveryCompleteCard(restMessage),
+
           const SizedBox(height: 10),
           _buildOverloadCard(riskLevel, riskColor, overload),
           if (warnings.isNotEmpty) _buildWarningsList(warnings),
           if (recs.isNotEmpty) _buildRecommendationsList(recs),
-          if (recommendedRestDays > 0)
-            _buildRestRecommendationText(recommendedRestDays),
+
+          // ❌ SUPPRIMÉ : plus de doublon
         ],
       ),
     );
@@ -292,27 +302,44 @@ class SessionPredictionCard extends StatelessWidget {
     );
   }
 
-  Widget _buildRestRecommendationText(int days) {
-    return Column(
-      children: [
-        const SizedBox(height: 8),
-        Padding(
-          padding: const EdgeInsets.only(bottom: 5),
-          child: Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              const Icon(Icons.bedtime_rounded, color: _kGreen, size: 13),
-              const SizedBox(width: 6),
-              Expanded(
-                child: Text(
-                  '💤 Repos recommandé : $days jour${days > 1 ? 's' : ''}. ${days >= 2 ? "Privilégiez le repos actif (marche, étirements)." : "Vous pouvez reprendre léger."}',
-                  style: const TextStyle(color: _kTextSub, fontSize: 11),
-                ),
-              ),
-            ],
+  // ✅ Nouvelle méthode pour la récupération terminée
+  Widget _buildRecoveryCompleteCard(String message) {
+    return Container(
+      margin: const EdgeInsets.only(top: 8),
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: _kGreen.withValues(alpha: 0.08),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: _kGreen.withValues(alpha: 0.3)),
+      ),
+      child: Row(
+        children: [
+          Container(
+            width: 36,
+            height: 36,
+            decoration: BoxDecoration(
+              color: _kGreen.withValues(alpha: 0.15),
+              borderRadius: BorderRadius.circular(10),
+            ),
+            child: const Icon(
+              Icons.check_circle_rounded,
+              color: _kGreen,
+              size: 20,
+            ),
           ),
-        ),
-      ],
+          const SizedBox(width: 12),
+          Expanded(
+            child: Text(
+              message,
+              style: const TextStyle(
+                color: _kGreen,
+                fontSize: 13,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ),
+        ],
+      ),
     );
   }
 

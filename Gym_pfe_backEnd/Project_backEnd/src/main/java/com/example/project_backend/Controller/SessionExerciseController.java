@@ -17,7 +17,7 @@ import java.util.*;
  * Résout le Problème #3 : charge réelle par exercice.
  */
 @RestController
-@CrossOrigin
+@CrossOrigin(origins = "*")
 public class SessionExerciseController {
 
     private final SessionExerciseRepository exerciseRepository;

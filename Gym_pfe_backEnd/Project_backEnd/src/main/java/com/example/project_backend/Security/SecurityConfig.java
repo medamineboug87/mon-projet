@@ -41,7 +41,8 @@ public class SecurityConfig {
                 .authorizeHttpRequests(auth -> auth
                         // ── Public (accessible sans authentification) ──
                         .requestMatchers("/auth/**").permitAll()
-                        .requestMatchers("/admin/plans/active").permitAll()  // ← SEULE LIGNE AJOUTÉE
+                        .requestMatchers("/admin/plans/active").permitAll()
+                        .requestMatchers("/api/ai/health").permitAll()  // ✅ AJOUTER CETTE LIGNE
                         .requestMatchers("/v3/api-docs/**", "/swagger-ui/**", "/swagger-ui.html").permitAll()
 
                         // ── Admin uniquement ──
@@ -59,7 +60,7 @@ public class SecurityConfig {
                         .requestMatchers("/admin/exercises/**").hasRole("ADMIN")
                         .requestMatchers("/exercises/**").authenticated()
                         .requestMatchers("/payments/**").authenticated()
-                        .requestMatchers("/api/ai/**").authenticated()
+                        .requestMatchers("/api/ai/**").authenticated()  // ← sauf health
 
                         // ── Tout le reste nécessite une authentification ──
                         .anyRequest().authenticated()

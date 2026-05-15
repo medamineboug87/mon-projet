@@ -13,7 +13,7 @@ import java.util.Map;
 
 @RestController
 @RequestMapping("/sessions")
-@CrossOrigin
+@CrossOrigin(origins = "*")
 public class TrainingSessionController {
 
     private final TrainingSessionService sessionService;

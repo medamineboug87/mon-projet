@@ -16,7 +16,7 @@ import java.util.Map;
 
 @RestController
 @RequestMapping("/admin/subscriptions")
-@CrossOrigin
+@CrossOrigin(origins = "*")
 public class AdminSubscriptionController {
 
     private final SubscriptionRepository subscriptionRepository;

@@ -15,7 +15,7 @@ import java.util.stream.Collectors;
  * Base URL : /members/{memberId}/ai-profile
  */
 @RestController
-@CrossOrigin
+@CrossOrigin(origins = "*")
 public class MemberProfileController {
 
     private final MemberProfileService profileService;

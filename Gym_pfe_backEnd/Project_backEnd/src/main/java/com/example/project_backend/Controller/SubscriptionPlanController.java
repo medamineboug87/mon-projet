@@ -10,7 +10,7 @@ import java.util.Map;
 
 @RestController
 @RequestMapping("/admin/plans")
-@CrossOrigin
+@CrossOrigin(origins = "*")
 public class SubscriptionPlanController {
 
     private final SubscriptionPlanRepository planRepository;

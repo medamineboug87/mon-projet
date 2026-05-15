@@ -16,7 +16,7 @@ import java.util.Map;
 
 @RestController
 @RequestMapping("/messages")
-@CrossOrigin
+@CrossOrigin(origins = "*")
 public class MessageController {
 
     private final MessageService    messageService;

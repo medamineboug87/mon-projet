@@ -11,7 +11,7 @@ import java.util.Map;
 
 @RestController
 @RequestMapping("/coaches")
-@CrossOrigin
+@CrossOrigin(origins = "*")
 public class CoachController {
 
     private final CoachRepository coachRepository;

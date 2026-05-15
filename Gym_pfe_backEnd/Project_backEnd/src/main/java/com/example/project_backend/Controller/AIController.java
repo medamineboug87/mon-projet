@@ -12,10 +12,12 @@ import org.slf4j.LoggerFactory;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
+import java.time.LocalDate;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.time.temporal.ChronoUnit;
 
 @RestController
 @RequestMapping("/api/ai")
@@ -126,7 +128,52 @@ public class AIController {
             result.put("sessionsAnalyzed", previousSessions.size());
             result.put("period", "7 derniers jours");
 
+            // ═══════════════════════════════════════════════════════════
+            // ✅ NOUVEAU : Calcul des jours de repos dynamiques
+            // ═══════════════════════════════════════════════════════════
             Optional<MemberProfile> profileOpt = memberProfileService.getProfile(memberId);
+
+            // Date de la dernière séance
+            LocalDate lastSessionDate = lastSession.getDate() != null
+                    ? lastSession.getDate()
+                    : LocalDate.now();
+
+            // Jours écoulés depuis la dernière séance
+            long daysSinceLastSession = ChronoUnit.DAYS.between(lastSessionDate, LocalDate.now());
+            result.put("daysSinceLastSession", daysSinceLastSession);
+            result.put("lastSessionDate", lastSessionDate.toString());
+
+            // Jours de repos recommandés (calcul original basé sur la séance)
+            int recommendedRestDays = 0;
+            int remainingRestDays = 0;
+
+            if (profileOpt.isPresent()) {
+                MemberProfile profile = profileOpt.get();
+                recommendedRestDays = aiService.getRecommendedRestDays(profile, lastSession);
+
+                // Jours restants = recommandés - jours déjà écoulés
+                remainingRestDays = (int) (recommendedRestDays - daysSinceLastSession);
+                if (remainingRestDays < 0) remainingRestDays = 0;
+
+                result.put("recommendedRestDays", recommendedRestDays);
+                result.put("remainingRestDays", remainingRestDays);
+
+                // Message dynamique selon les jours restants
+                String restMessage;
+                if (remainingRestDays == 0) {
+                    restMessage = "✅ Récupération terminée. Vous pouvez reprendre l'entraînement !";
+                } else if (remainingRestDays == 1) {
+                    restMessage = "💤 Encore 1 jour de repos recommandé.";
+                } else {
+                    restMessage = "💤 Encore " + remainingRestDays + " jours de repos recommandés.";
+                }
+                result.put("restMessage", restMessage);
+            } else {
+                result.put("recommendedRestDays", null);
+                result.put("remainingRestDays", null);
+                result.put("restMessage", null);
+            }
+
             if (profileOpt.isPresent()) {
                 MemberProfile profile = profileOpt.get();
                 Map<String, Object> profileMap = memberProfileService.toMap(profile);

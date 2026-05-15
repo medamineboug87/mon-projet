@@ -606,7 +606,7 @@ public class AIService {
         };
     }
 
-    private int getRecommendedRestDays(MemberProfile profile, TrainingSession session) {
+    public int getRecommendedRestDays(MemberProfile profile, TrainingSession session) {
         if (profile == null) return 1;
         int restDays = 0;
         String level = profile.getSelfDeclaredLevel() != null ? profile.getSelfDeclaredLevel().name() : "BEGINNER";
@@ -833,5 +833,27 @@ public class AIService {
         if (warningCount > 2) return "ÉLEVÉ";
         if (warningCount > 0) return "MODÉRÉ";
         return "NORMAL";
+    }
+    // AIService.java - Ajouter cette méthode
+
+    public int getRemainingRestDays(MemberProfile profile, TrainingSession lastSession) {
+        if (lastSession == null) return 0;
+
+        // Date de la dernière séance
+        LocalDate lastSessionDate = lastSession.getDate() != null
+                ? lastSession.getDate()
+                : LocalDate.now();
+
+        // Jours écoulés depuis la dernière séance
+        long daysSinceLastSession = ChronoUnit.DAYS.between(lastSessionDate, LocalDate.now());
+
+        // Jours de repos recommandés (calcul original)
+        int recommendedDays = getRecommendedRestDays(profile, lastSession);
+
+        // Jours restants = recommandés - jours écoulés
+        int remainingDays = recommendedDays - (int) daysSinceLastSession;
+
+        // Ne pas retourner de valeur négative
+        return Math.max(0, remainingDays);
     }
 }

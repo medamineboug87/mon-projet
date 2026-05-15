@@ -28,7 +28,7 @@ const Color _kText = Color(0xFF1A2340);
 const Color _kTextSub = Color(0xFF6B7A99);
 const Color _kBorder = Color(0xFFDDE2EE);
 
-// ─── Muscles disponibles ───
+// ✅ CORRECTION #1 : Liste complète des muscles (17 muscles, alignée avec admin_exercises_screen)
 const List<Map<String, dynamic>> _kMuscleGroups = [
   {
     'group': 'Haut du corps',
@@ -37,7 +37,9 @@ const List<Map<String, dynamic>> _kMuscleGroups = [
       {'name': 'Dorsaux', 'emoji': '🏋️', 'color': 0xFF00897B},
       {'name': 'Épaules', 'emoji': '🔺', 'color': 0xFF7B1FA2},
       {'name': 'Biceps', 'emoji': '💪', 'color': 0xFFF57C00},
+      {'name': 'Biceps droit', 'emoji': '💪', 'color': 0xFFF57C00}, // ✅ AJOUTÉ
       {'name': 'Triceps', 'emoji': '💪', 'color': 0xFFE53935},
+      {'name': 'Triceps droit', 'emoji': '💪', 'color': 0xFFE53935}, // ✅ AJOUTÉ
       {'name': 'Trapèzes', 'emoji': '🔝', 'color': 0xFF0288D1},
       {'name': 'Abdominaux', 'emoji': '⬡', 'color': 0xFF388E3C},
       {'name': 'Lombaires', 'emoji': '🔙', 'color': 0xFF6D4C41},
@@ -47,9 +49,24 @@ const List<Map<String, dynamic>> _kMuscleGroups = [
     'group': 'Bas du corps',
     'muscles': [
       {'name': 'Quadriceps', 'emoji': '🦵', 'color': 0xFF1976D2},
+      {
+        'name': 'Quadriceps droit',
+        'emoji': '🦵',
+        'color': 0xFF1976D2,
+      }, // ✅ AJOUTÉ
       {'name': 'Ischio-jambiers', 'emoji': '🦵', 'color': 0xFF7B1FA2},
+      {
+        'name': 'Ischio-jambiers droits',
+        'emoji': '🦵',
+        'color': 0xFF7B1FA2,
+      }, // ✅ AJOUTÉ
       {'name': 'Fessiers', 'emoji': '🍑', 'color': 0xFFF57C00},
       {'name': 'Mollets', 'emoji': '🦶', 'color': 0xFF00897B},
+      {
+        'name': 'Mollets droits',
+        'emoji': '🦶',
+        'color': 0xFF00897B,
+      }, // ✅ AJOUTÉ
     ],
   },
 ];
@@ -77,7 +94,7 @@ class NewSessionScreen extends StatefulWidget {
 class _NewSessionScreenState extends State<NewSessionScreen>
     with TickerProviderStateMixin {
   // ── Stepper ──
-  int _step = 0; // 0=muscles, 1=détails, 2=résultat
+  int _step = 0;
   late AnimationController _stepAnim;
   late Animation<double> _fadeAnim;
 
@@ -136,7 +153,6 @@ class _NewSessionScreenState extends State<NewSessionScreen>
 
   bool get _canProceed => _selectedMuscles.isNotEmpty || _hasCardio;
 
-  // ── Exercices ──
   void _showPickerForMuscle(String muscle) {
     showModalBottomSheet(
       context: context,
@@ -175,7 +191,6 @@ class _NewSessionScreenState extends State<NewSessionScreen>
     );
   }
 
-  // ── Soumission ──
   Future<void> _submit() async {
     if (_durationCtrl.text.trim().isEmpty) {
       _snack('Entrez la durée de la séance');
@@ -215,7 +230,6 @@ class _NewSessionScreenState extends State<NewSessionScreen>
 
     if (result['success'] == true) {
       final sessionId = result['session']['id'] as int;
-      // FIX #14 : _saveExercises gère maintenant les erreurs et notifie l'utilisateur
       if (_exercises.isNotEmpty) await _saveExercises(sessionId);
       final prediction = await MemberService.getAIPrediction(
         widget.memberId,
@@ -232,7 +246,6 @@ class _NewSessionScreenState extends State<NewSessionScreen>
     }
   }
 
-  // FIX #14 : erreur de sauvegarde des exercices explicitement remontée à l'utilisateur
   Future<void> _saveExercises(int sessionId) async {
     try {
       final token = await AuthService.getToken();
@@ -279,10 +292,6 @@ class _NewSessionScreenState extends State<NewSessionScreen>
       ),
     );
   }
-
-  // ══════════════════════════════════════════════════
-  // BUILD
-  // ══════════════════════════════════════════════════
 
   @override
   Widget build(BuildContext context) {
@@ -400,7 +409,7 @@ class _NewSessionScreenState extends State<NewSessionScreen>
   }
 
   // ══════════════════════════════════════════════════
-  // ÉTAPE 0 — MUSCLES
+  // ÉTAPE 0 — MUSCLES (17 muscles disponibles)
   // ══════════════════════════════════════════════════
 
   Widget _buildStep0() {
@@ -658,7 +667,7 @@ class _NewSessionScreenState extends State<NewSessionScreen>
 }
 
 // ══════════════════════════════════════════════════
-// SOUS-WIDGETS
+// SOUS-WIDGETS (inchangés)
 // ══════════════════════════════════════════════════
 
 class _StepProgressBar extends StatelessWidget {

@@ -8,9 +8,10 @@ import org.springframework.web.bind.annotation.*;
 import java.text.Normalizer;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 
 @RestController
-@CrossOrigin
+@CrossOrigin(origins = "*")
 public class ExerciseController {
 
     private final ExerciseRepository exerciseRepository;
@@ -162,4 +163,15 @@ public class ExerciseController {
                 .toLowerCase()
                 .trim();
     }
+    // ExerciseController.java - Ajouter cette méthode si elle n'existe pas
+
+    @GetMapping("/exercises/name/{exerciseName}")
+    public ResponseEntity<?> getExerciseByName(@PathVariable String exerciseName) {
+        Optional<Exercise> exercise = exerciseRepository.findByNameIgnoreCase(exerciseName);
+        if (exercise.isPresent()) {
+            return ResponseEntity.ok(exercise.get());
+        }
+        return ResponseEntity.notFound().build();
+    }
+
 }
