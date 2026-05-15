@@ -30,12 +30,13 @@ class CoachAIFeedbackService {
   }
 
   // Récupérer les statistiques de précision par membre
+  // FIX #9 : suppression de la variable coachId déclarée mais inutilisée
   static Future<List<Map<String, dynamic>>> getMembersAccuracyStats() async {
     try {
       final token = await AuthService.getToken();
-      final coachId = await AuthService.getCoachId();
+      // coachId supprimé — la route /members retourne tous les membres
+      // TODO: implémenter le filtrage par coach quand /members/coach/{coachId} sera disponible
 
-      // Récupérer tous les membres (pas de route /members/coach/{coachId})
       final membersResponse = await http
           .get(
             Uri.parse('${ApiConfig.baseUrl}/members'),
@@ -74,10 +75,7 @@ class CoachAIFeedbackService {
           stats.add({
             'memberId': memberId,
             'memberName': memberName,
-            'fatigue': {
-              'accuracyValue': 0.0,
-              'accuracy': '0.0%',
-            }, // ← ajouter 'accuracy'
+            'fatigue': {'accuracyValue': 0.0, 'accuracy': '0.0%'},
             'injury': {'accuracyValue': 0.0, 'accuracy': '0.0%'},
             'averageRating': null,
             'correctionsCount': 0,
@@ -97,11 +95,13 @@ class CoachAIFeedbackService {
   }
 
   // Récupérer les feedbacks récents par membre
+  // FIX #9 : suppression de la variable coachId déclarée mais inutilisée
   static Future<Map<int, List<Map<String, dynamic>>>>
   getRecentFeedbacksByMember() async {
     try {
       final token = await AuthService.getToken();
-      final coachId = await AuthService.getCoachId();
+      // coachId supprimé — non utilisé dans la requête
+      // TODO: filtrer par coach quand l'API le supportera
 
       final response = await http
           .get(

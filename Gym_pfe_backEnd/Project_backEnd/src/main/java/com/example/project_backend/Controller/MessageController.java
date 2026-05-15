@@ -6,6 +6,7 @@ import com.example.project_backend.Entity.User;
 import com.example.project_backend.Repository.MessageRepository;
 import com.example.project_backend.Repository.UserRepository;
 import com.example.project_backend.Service.MessageService;
+import org.springframework.security.core.Authentication;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.web.bind.annotation.*;
@@ -50,7 +51,20 @@ public class MessageController {
 
     @GetMapping("/member/{memberId}")
     public ResponseEntity<List<Message>> getMemberMessages(
-            @PathVariable Long memberId) {
+            @PathVariable Long memberId,
+            Authentication authentication) {
+        String username = authentication.getName();
+        User currentUser = userRepository.findByUsername(username)
+                .orElseThrow(() -> new RuntimeException("User not found"));
+
+        boolean isOwner = currentUser.getMember() != null
+                && currentUser.getMember().getId().equals(memberId);
+        boolean isAdminOrCoach = currentUser.getRole() == Role.ADMIN
+                || currentUser.getRole() == Role.COACH;
+
+        if (!isOwner && !isAdminOrCoach) {
+            return ResponseEntity.status(403).build();
+        }
         return ResponseEntity.ok(messageService.getMemberMessages(memberId));
     }
 

@@ -3,6 +3,7 @@ package com.example.project_backend.Controller;
 import com.example.project_backend.Entity.Member;
 import com.example.project_backend.Entity.Subscription;
 import com.example.project_backend.Repository.MemberRepository;
+import com.example.project_backend.Repository.SubscriptionPlanRepository;
 import com.example.project_backend.Repository.SubscriptionRepository;
 import com.example.project_backend.Service.PaymentService;
 import com.example.project_backend.Service.SubscriptionService;
@@ -23,16 +24,20 @@ public class PaymentController {
     private final SubscriptionService subscriptionService;
     private final SubscriptionRepository subscriptionRepository;
     private final MemberRepository memberRepository;
+    private final SubscriptionPlanRepository planRepository;
+
 
     public PaymentController(
             PaymentService paymentService,
             SubscriptionService subscriptionService,
             SubscriptionRepository subscriptionRepository,
-            MemberRepository memberRepository) {
+            MemberRepository memberRepository,
+            SubscriptionPlanRepository planRepository) {
         this.paymentService = paymentService;
         this.subscriptionService = subscriptionService;
         this.subscriptionRepository = subscriptionRepository;
         this.memberRepository = memberRepository;
+        this.planRepository=planRepository;
     }
 
     // ──────────────────────────────────────────────────
@@ -191,12 +196,23 @@ public class PaymentController {
 
     // ── Helper ──
     private void setSubscriptionPriceAndDuration(Subscription sub, String type) {
-        switch (type) {
-            case "BASIC"    -> { sub.setPrice(60);  sub.setDuration(1);  }
-            case "STANDARD" -> { sub.setPrice(150); sub.setDuration(3);  }
-            case "PREMIUM"  -> { sub.setPrice(300); sub.setDuration(6);  }
-            case "ANNUAL"   -> { sub.setPrice(490); sub.setDuration(12); }
-            default -> throw new IllegalArgumentException("Type d'abonnement inconnu: " + type);
-        }
+        if (type == null) return;
+        // 1. Chercher dans les plans custom BDD
+        planRepository.findByName(type.toUpperCase()).ifPresentOrElse(
+                plan -> {
+                    sub.setPrice(plan.getPrice());
+                    sub.setDuration(plan.getDuration());
+                },
+                () -> {
+                    switch (type.toUpperCase()) {
+                        case "BASIC"    -> { sub.setPrice(60);  sub.setDuration(1);  }
+                        case "STANDARD" -> { sub.setPrice(150); sub.setDuration(3);  }
+                        case "PREMIUM"  -> { sub.setPrice(300); sub.setDuration(6);  }
+                        case "ANNUAL"   -> { sub.setPrice(490); sub.setDuration(12); }
+                        default -> throw new IllegalArgumentException(
+                                "Type d'abonnement inconnu: " + type);
+                    }
+                }
+        );
     }
 }

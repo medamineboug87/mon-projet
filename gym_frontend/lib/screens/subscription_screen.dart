@@ -5,24 +5,14 @@ import '../services/plan_service.dart';
 import 'payment_screen.dart';
 
 // ─── Design tokens light ───
-const Color _kBg      = Color(0xFFF4F6FA);
 const Color _kSurface = Color(0xFFFFFFFF);
-const Color _kSurf2   = Color(0xFFEEF1F8);
-const Color _kGreen   = Color(0xFF00897B);
-const Color _kGreenL  = Color(0xFFE0F2F1);
-const Color _kGreenDark = Color(0xFF00695C);
-const Color _kBlue    = Color(0xFF1976D2);
-const Color _kBlueL   = Color(0xFFE3F2FD);
-const Color _kOrange  = Color(0xFFF57C00);
-const Color _kOrangeL = Color(0xFFFFF3E0);
-const Color _kRed     = Color(0xFFE53935);
-const Color _kRedL    = Color(0xFFFFEBEE);
-const Color _kPurple  = Color(0xFF7B1FA2);
-const Color _kPurpleL = Color(0xFFF3E5F5);
-const Color _kText    = Color(0xFF1A2340);
+const Color _kSurf2 = Color(0xFFEEF1F8);
+const Color _kGreen = Color(0xFF00897B);
+const Color _kOrange = Color(0xFFF57C00);
+const Color _kRed = Color(0xFFE53935);
+const Color _kText = Color(0xFF1A2340);
 const Color _kTextSub = Color(0xFF6B7A99);
-const Color _kBorder  = Color(0xFFDDE2EE);
-
+const Color _kBorder = Color(0xFFDDE2EE);
 
 class SubscriptionScreen extends ConsumerStatefulWidget {
   final int memberId;
@@ -62,10 +52,7 @@ class _SubscriptionScreenState extends ConsumerState<SubscriptionScreen> {
     return Scaffold(
       backgroundColor: _kSurface,
       appBar: AppBar(
-        title: const Text(
-          'Mon Abonnement',
-          style: TextStyle(color: _kText),
-        ),
+        title: const Text('Mon Abonnement', style: TextStyle(color: _kText)),
         backgroundColor: const Color(0xFFEEF1F8),
         iconTheme: const IconThemeData(color: _kText),
         actions: [
@@ -123,7 +110,15 @@ class _SubscriptionScreenState extends ConsumerState<SubscriptionScreen> {
               style: TextStyle(color: _kText, fontSize: 18),
             ),
             const SizedBox(height: 32),
-            ElevatedButton(onPressed: () {}, child: const Text('Réessayer')),
+            ElevatedButton(
+              onPressed: () =>
+                  ref.invalidate(activeSubscriptionProvider(widget.memberId)),
+              style: ElevatedButton.styleFrom(backgroundColor: _kGreen),
+              child: const Text(
+                'Réessayer',
+                style: TextStyle(color: Colors.white),
+              ),
+            ),
           ],
         ),
       ),
@@ -135,12 +130,22 @@ class _SubscriptionScreenState extends ConsumerState<SubscriptionScreen> {
     Map<String, dynamic>? subscriptionData,
     WidgetRef ref,
   ) {
-    final sub = subscriptionData?['subscription'];
+    // FIX #17 : null-safety complète sur sub
+    final sub = subscriptionData?['subscription'] as Map<String, dynamic>?;
     final status = subscriptionData?['status'] ?? 'ACTIF';
     final daysRemaining = subscriptionData?['daysRemaining'] ?? 0;
     final isExpiring = subscriptionData?['isExpiring'] ?? false;
     final isExpired = subscriptionData?['isExpired'] ?? false;
     final bool isLocked = !isExpired;
+
+    // FIX #17 : extraction sécurisée du type et du prix
+    final String subType = sub?['type']?.toString() ?? 'N/A';
+    final dynamic rawPrice = sub?['price'];
+    final dynamic rawDuration = sub?['duration'];
+    final String priceLabel = rawPrice != null ? '$rawPrice DT' : 'N/A';
+    final String durationLabel = rawDuration != null
+        ? '$rawDuration mois'
+        : 'N/A';
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -166,14 +171,15 @@ class _SubscriptionScreenState extends ConsumerState<SubscriptionScreen> {
                 children: [
                   const Icon(
                     Icons.card_membership,
-                    color: _kText,
+                    color: Colors.white,
                     size: 28,
                   ),
                   const SizedBox(width: 12),
                   Text(
-                    _getPlanDisplayName(sub?['type'] ?? 'N/A'),
+                    // FIX #17 : utilise _getPlanDisplayName avec subType sécurisé
+                    _getPlanDisplayName(subType),
                     style: const TextStyle(
-                      color: _kText,
+                      color: Colors.white,
                       fontSize: 28,
                       fontWeight: FontWeight.bold,
                     ),
@@ -181,9 +187,10 @@ class _SubscriptionScreenState extends ConsumerState<SubscriptionScreen> {
                 ],
               ),
               const SizedBox(height: 8),
+              // FIX #17 : affichage sécurisé prix / durée
               Text(
-                '${sub?['price']} DT / ${sub?['duration']} mois',
-                style: const TextStyle(color: _kText),
+                '$priceLabel / $durationLabel',
+                style: const TextStyle(color: Colors.white),
               ),
               const SizedBox(height: 16),
               Row(
@@ -195,20 +202,20 @@ class _SubscriptionScreenState extends ConsumerState<SubscriptionScreen> {
                       vertical: 4,
                     ),
                     decoration: BoxDecoration(
-                      color: _kText.withValues(alpha: 0.2),
+                      color: Colors.white.withValues(alpha: 0.2),
                       borderRadius: BorderRadius.circular(20),
                     ),
                     child: Text(
-                      status,
+                      status.toString(),
                       style: const TextStyle(
-                        color: _kText,
+                        color: Colors.white,
                         fontWeight: FontWeight.bold,
                       ),
                     ),
                   ),
                   Text(
                     '$daysRemaining jours restants',
-                    style: const TextStyle(color: _kText),
+                    style: const TextStyle(color: Colors.white),
                   ),
                 ],
               ),
@@ -225,25 +232,16 @@ class _SubscriptionScreenState extends ConsumerState<SubscriptionScreen> {
             decoration: BoxDecoration(
               color: _kOrange.withValues(alpha: 0.1),
               borderRadius: BorderRadius.circular(12),
-              border: Border.all(
-                color: _kOrange.withValues(alpha: 0.4),
-              ),
+              border: Border.all(color: _kOrange.withValues(alpha: 0.4)),
             ),
             child: Row(
               children: [
-                const Icon(
-                  Icons.lock_outline,
-                  color: _kOrange,
-                  size: 20,
-                ),
+                const Icon(Icons.lock_outline, color: _kOrange, size: 20),
                 const SizedBox(width: 10),
                 Expanded(
                   child: Text(
                     'Vous pouvez changer d\'abonnement dans $daysRemaining jours.',
-                    style: const TextStyle(
-                      color: _kOrange,
-                      fontSize: 12,
-                    ),
+                    style: const TextStyle(color: _kOrange, fontSize: 12),
                   ),
                 ),
               ],
@@ -264,7 +262,7 @@ class _SubscriptionScreenState extends ConsumerState<SubscriptionScreen> {
           context,
           ref,
           isLocked: isLocked,
-          currentType: sub?['type'],
+          currentType: subType == 'N/A' ? null : subType,
         ),
       ],
     );
@@ -324,6 +322,23 @@ class _SubscriptionScreenState extends ConsumerState<SubscriptionScreen> {
       );
     }
 
+    if (_plans.isEmpty) {
+      return Container(
+        padding: const EdgeInsets.all(20),
+        decoration: BoxDecoration(
+          color: _kSurf2,
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: _kBorder),
+        ),
+        child: const Center(
+          child: Text(
+            'Aucun plan disponible pour le moment.',
+            style: TextStyle(color: _kTextSub),
+          ),
+        ),
+      );
+    }
+
     return Column(
       children: _plans
           .map(
@@ -366,7 +381,6 @@ class _SubscriptionScreenState extends ConsumerState<SubscriptionScreen> {
         children: [
           Row(
             children: [
-              // Emoji
               Text(plan.emoji, style: const TextStyle(fontSize: 24)),
               const SizedBox(width: 12),
               Expanded(
@@ -385,17 +399,11 @@ class _SubscriptionScreenState extends ConsumerState<SubscriptionScreen> {
                         plan.description!.isNotEmpty)
                       Text(
                         plan.description!,
-                        style: const TextStyle(
-                          color: _kTextSub,
-                          fontSize: 11,
-                        ),
+                        style: const TextStyle(color: _kTextSub, fontSize: 11),
                       ),
                     Text(
                       plan.durationLabel,
-                      style: const TextStyle(
-                        color: _kTextSub,
-                        fontSize: 11,
-                      ),
+                      style: const TextStyle(color: _kTextSub, fontSize: 11),
                     ),
                   ],
                 ),
@@ -473,7 +481,7 @@ class _SubscriptionScreenState extends ConsumerState<SubscriptionScreen> {
                       ),
                       child: const Text(
                         'Souscrire',
-                        style: TextStyle(color: _kText),
+                        style: TextStyle(color: Colors.white),
                       ),
                     ),
             ),
@@ -484,10 +492,9 @@ class _SubscriptionScreenState extends ConsumerState<SubscriptionScreen> {
   }
 
   String _getPlanDisplayName(String type) {
-    // Chercher dans les plans chargés
+    if (type == 'N/A') return type;
     final match = _plans.where((p) => p.name == type);
     if (match.isNotEmpty) return match.first.displayName;
-    // Fallback
     return type;
   }
 

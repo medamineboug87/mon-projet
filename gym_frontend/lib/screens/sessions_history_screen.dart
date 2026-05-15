@@ -1,28 +1,14 @@
-
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../providers/session_provider.dart';
 import '../providers/prediction_provider.dart';
 
 // ─── Design tokens light ───
-const Color _kBg      = Color(0xFFF4F6FA);
 const Color _kSurface = Color(0xFFFFFFFF);
-const Color _kSurf2   = Color(0xFFEEF1F8);
-const Color _kGreen   = Color(0xFF00897B);
-const Color _kGreenL  = Color(0xFFE0F2F1);
-const Color _kGreenDark = Color(0xFF00695C);
-const Color _kBlue    = Color(0xFF1976D2);
-const Color _kBlueL   = Color(0xFFE3F2FD);
-const Color _kOrange  = Color(0xFFF57C00);
-const Color _kOrangeL = Color(0xFFFFF3E0);
-const Color _kRed     = Color(0xFFE53935);
-const Color _kRedL    = Color(0xFFFFEBEE);
-const Color _kPurple  = Color(0xFF7B1FA2);
-const Color _kPurpleL = Color(0xFFF3E5F5);
-const Color _kText    = Color(0xFF1A2340);
+const Color _kGreen = Color(0xFF00897B);
+const Color _kText = Color(0xFF1A2340);
 const Color _kTextSub = Color(0xFF6B7A99);
-const Color _kBorder  = Color(0xFFDDE2EE);
-
+const Color _kBorder = Color(0xFFDDE2EE);
 
 class SessionsHistoryScreen extends ConsumerWidget {
   final int memberId;
@@ -64,10 +50,7 @@ class SessionsHistoryScreen extends ConsumerWidget {
       ),
       body: sessions.isEmpty
           ? const Center(
-              child: Text(
-                'Aucune séance',
-                style: TextStyle(color: _kTextSub),
-              ),
+              child: Text('Aucune séance', style: TextStyle(color: _kTextSub)),
             )
           : RefreshIndicator(
               onRefresh: () => _refreshData(ref),
@@ -245,16 +228,10 @@ class SessionsHistoryScreen extends ConsumerWidget {
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
-          Text(
-            label,
-            style: const TextStyle(color: _kTextSub, fontSize: 13),
-          ),
+          Text(label, style: const TextStyle(color: _kTextSub, fontSize: 13)),
           Text(
             value,
-            style: const TextStyle(
-              color: _kText,
-              fontWeight: FontWeight.bold,
-            ),
+            style: const TextStyle(color: _kText, fontWeight: FontWeight.bold),
           ),
         ],
       ),

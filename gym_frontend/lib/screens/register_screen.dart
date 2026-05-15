@@ -43,7 +43,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
   String _gender = 'MALE';
 
   // Étape 2 — Abonnement
-  String? _selectedPlan; // name technique (ex: "BASIC", "ETE_2025")
+  String? _selectedPlan;
 
   // Étape 3 — Compte
   final _usernameController = TextEditingController();
@@ -220,7 +220,6 @@ class _RegisterScreenState extends State<RegisterScreen> {
               'username': _usernameController.text.trim(),
               'password': _passwordController.text,
               'subscriptionType': _selectedPlan,
-              // Prix du plan pour que le backend puisse créer l'abonnement
               'subscriptionPrice': _selectedPlanModel?.price ?? 0,
               'subscriptionDuration': _selectedPlanModel?.duration ?? 1,
               'paymentRef': _paymentMethod == 'card'
@@ -262,26 +261,94 @@ class _RegisterScreenState extends State<RegisterScreen> {
     }
   }
 
+  // ── FIX #7 : Activation carte avec gestion d'erreur explicite ──
   Future<void> _activateCardSubscription(int memberId) async {
     final plan = _selectedPlanModel;
     final token = await AuthService.getToken();
 
+    bool activationSuccess = false;
     try {
-      await http.post(
-        Uri.parse('${ApiConfig.baseUrl}/payments/simulate'),
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': 'Bearer $token',
-        },
-        body: jsonEncode({
-          'memberId': memberId,
-          'subscriptionType': _selectedPlan,
-          'amount': plan?.price ?? 0,
-        }),
-      );
-    } catch (_) {}
+      final response = await http
+          .post(
+            Uri.parse('${ApiConfig.baseUrl}/payments/simulate'),
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': 'Bearer $token',
+            },
+            body: jsonEncode({
+              'memberId': memberId,
+              'subscriptionType': _selectedPlan,
+              'amount': plan?.price ?? 0,
+            }),
+          )
+          .timeout(const Duration(seconds: 15));
+      activationSuccess = response.statusCode == 200;
+    } catch (_) {
+      activationSuccess = false;
+    }
 
-    if (mounted) {
+    if (!mounted) return;
+
+    if (!activationSuccess) {
+      // Informer l'utilisateur que l'activation automatique a échoué
+      showDialog(
+        context: context,
+        barrierDismissible: false,
+        builder: (ctx) => AlertDialog(
+          backgroundColor: _kSurface,
+          title: const Text(
+            '⚠️ Activation en attente',
+            style: TextStyle(color: _kText),
+          ),
+          content: const Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'Votre compte a été créé avec succès.',
+                style: TextStyle(color: _kText),
+              ),
+              SizedBox(height: 12),
+              Text(
+                "L'activation automatique n'a pas pu être effectuée.",
+                style: TextStyle(color: _kOrange, fontWeight: FontWeight.bold),
+              ),
+              SizedBox(height: 8),
+              Text(
+                '📋 Pour activer votre abonnement :',
+                style: TextStyle(color: _kText, fontSize: 13),
+              ),
+              SizedBox(height: 4),
+              Text(
+                '1. Présentez-vous à la réception',
+                style: TextStyle(color: _kText, fontSize: 13),
+              ),
+              Text(
+                '2. L\'admin activera votre abonnement',
+                style: TextStyle(color: _kText, fontSize: 13),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () {
+                Navigator.pop(ctx);
+                Navigator.pushReplacement(
+                  context,
+                  MaterialPageRoute(
+                    builder: (_) => MemberHomeScreen(memberId: memberId),
+                  ),
+                );
+              },
+              child: const Text(
+                'OK, compris !',
+                style: TextStyle(color: _kOrange, fontWeight: FontWeight.bold),
+              ),
+            ),
+          ],
+        ),
+      );
+    } else {
       Navigator.pushReplacement(
         context,
         MaterialPageRoute(builder: (_) => MemberHomeScreen(memberId: memberId)),
@@ -711,7 +778,6 @@ class _RegisterScreenState extends State<RegisterScreen> {
         ),
         const SizedBox(height: 24),
 
-        // Loading state
         if (_plansLoading)
           const Center(
             child: Padding(
@@ -765,7 +831,6 @@ class _RegisterScreenState extends State<RegisterScreen> {
                 ),
                 child: Row(
                   children: [
-                    // Emoji + couleur
                     Container(
                       width: 50,
                       height: 50,
@@ -809,7 +874,6 @@ class _RegisterScreenState extends State<RegisterScreen> {
                               fontSize: 11,
                             ),
                           ),
-                          // Badge "Personnalisé" pour les plans custom
                           if (plan.isCustom)
                             Container(
                               margin: const EdgeInsets.only(top: 4),
@@ -988,7 +1052,6 @@ class _RegisterScreenState extends State<RegisterScreen> {
           ),
         ),
         const SizedBox(height: 16),
-        // Résumé commande
         Container(
           padding: const EdgeInsets.all(16),
           decoration: BoxDecoration(
@@ -1270,7 +1333,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
 }
 
 // ─────────────────────────────────────────────
-// BACKGROUND SPORTIF (identique à LoginScreen)
+// BACKGROUND SPORTIF
 // ─────────────────────────────────────────────
 class _SportBackground extends StatelessWidget {
   const _SportBackground();
@@ -1284,7 +1347,6 @@ class _SportBackground extends StatelessWidget {
 class _SportBgPainter extends CustomPainter {
   @override
   void paint(Canvas canvas, Size size) {
-    // Fond dégradé très léger
     final bgPaint = Paint()
       ..shader = const LinearGradient(
         begin: Alignment.topRight,
@@ -1293,7 +1355,6 @@ class _SportBgPainter extends CustomPainter {
       ).createShader(Rect.fromLTWH(0, 0, size.width, size.height));
     canvas.drawRect(Rect.fromLTWH(0, 0, size.width, size.height), bgPaint);
 
-    // Orbe vert top-right
     final orb1 = Paint()
       ..shader =
           RadialGradient(
@@ -1306,7 +1367,6 @@ class _SportBgPainter extends CustomPainter {
           );
     canvas.drawCircle(Offset(size.width + 30, -20), 220, orb1);
 
-    // Orbe bleu bottom-left
     final orb2 = Paint()
       ..shader =
           RadialGradient(
@@ -1319,7 +1379,6 @@ class _SportBgPainter extends CustomPainter {
           );
     canvas.drawCircle(Offset(-40, size.height + 10), 180, orb2);
 
-    // Grille fine
     final grid = Paint()
       ..color = const Color(0xFF00897B).withValues(alpha: 0.04)
       ..strokeWidth = 0.5;
@@ -1331,13 +1390,9 @@ class _SportBgPainter extends CustomPainter {
       canvas.drawLine(Offset(0, y), Offset(size.width, y), grid);
     }
 
-    // Haltère décoratif top-left
     _drawDumbbell(canvas, const Offset(32, 80), 0.06);
-    // Haltère décoratif bottom-right
     _drawDumbbell(canvas, Offset(size.width - 40, size.height - 120), 0.05);
-    // Hexagone
     _drawHex(canvas, Offset(size.width - 55, 55), 48);
-    // Coeur de sport (bottom-left)
     _drawHeartbeat(
       canvas,
       Offset(28, size.height - 140),

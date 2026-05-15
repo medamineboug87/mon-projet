@@ -6,23 +6,11 @@ import '../providers/session_provider.dart';
 import '../widgets/index.dart';
 
 // ─── Design tokens light ───
-const Color _kBg      = Color(0xFFF4F6FA);
-const Color _kSurface = Color(0xFFFFFFFF);
-const Color _kGreen   = Color(0xFF00897B);
-const Color _kGreenL  = Color(0xFFE0F2F1);
+const Color _kGreen = Color(0xFF00897B);
 const Color _kGreenDark = Color(0xFF00695C);
-const Color _kBlue    = Color(0xFF1976D2);
-const Color _kBlueL   = Color(0xFFE3F2FD);
-const Color _kOrange  = Color(0xFFF57C00);
-const Color _kOrangeL = Color(0xFFFFF3E0);
-const Color _kRed     = Color(0xFFE53935);
-const Color _kRedL    = Color(0xFFFFEBEE);
-const Color _kPurple  = Color(0xFF7B1FA2);
-const Color _kPurpleL = Color(0xFFF3E5F5);
-const Color _kText    = Color(0xFF1A2340);
-const Color _kTextSub = Color(0xFF6B7A99);
-const Color _kBorder  = Color(0xFFDDE2EE);
-
+const Color _kOrange = Color(0xFFF57C00);
+const Color _kRed = Color(0xFFE53935);
+const Color _kText = Color(0xFF1A2340);
 
 class WorkoutPlanScreen extends ConsumerStatefulWidget {
   const WorkoutPlanScreen({super.key});
@@ -302,10 +290,7 @@ class _WorkoutPlanScreenState extends ConsumerState<WorkoutPlanScreen> {
                     const SizedBox(height: 4),
                     Text(
                       plan['description'],
-                      style: const TextStyle(
-                        color: _kText,
-                        fontSize: 14,
-                      ),
+                      style: const TextStyle(color: _kText, fontSize: 14),
                     ),
                   ],
                 ),
@@ -381,9 +366,7 @@ class _WorkoutPlanScreenState extends ConsumerState<WorkoutPlanScreen> {
             color: const Color(0xFFEEF1F8),
             borderRadius: BorderRadius.circular(12),
             border: Border.all(
-              color: isRest
-                  ? Colors.grey
-                  : _kGreen.withValues(alpha: 0.3),
+              color: isRest ? Colors.grey : _kGreen.withValues(alpha: 0.3),
             ),
           ),
           child: Row(

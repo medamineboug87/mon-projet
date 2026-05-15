@@ -87,17 +87,23 @@ public class AuthController {
                 Long memberId = user.getMember().getId();
                 List<Subscription> allSubs = subscriptionRepository.findByMemberId(memberId);
 
-                if (!allSubs.isEmpty()) {
-                    boolean hasActive  = allSubs.stream().anyMatch(s -> "ACTIVE".equals(s.getStatus()));
-                    boolean hasPending = allSubs.stream().anyMatch(s -> "PENDING".equals(s.getStatus()));
+                boolean hasActive  = allSubs.stream().anyMatch(s -> "ACTIVE".equals(s.getStatus()));
+                boolean hasPending = allSubs.stream().anyMatch(s -> "PENDING".equals(s.getStatus()));
 
-                    if (hasPending && !hasActive) {
-                        return ResponseEntity.status(403).body(Map.of(
-                                "error", "PENDING",
-                                "message", "Votre abonnement est en attente de paiement. Présentez-vous à la réception."
-                        ));
-                    }
+                if (hasPending && !hasActive) {
+                    return ResponseEntity.status(403).body(Map.of(
+                            "error", "PENDING",
+                            "message", "Votre abonnement est en attente de paiement. Présentez-vous à la réception."
+                    ));
                 }
+                // Optionnel : bloquer si aucun abonnement du tout
+                 if (allSubs.isEmpty()) {
+                     return ResponseEntity.status(403).body(Map.of(
+                         "error", "NO_SUBSCRIPTION",
+                         "message", "Aucun abonnement actif."
+                     ));
+                 }
+
             }
 
             String token = jwtService.generateToken(user.getUsername(), user.getRole().name());

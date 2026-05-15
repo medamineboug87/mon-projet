@@ -215,6 +215,7 @@ class _NewSessionScreenState extends State<NewSessionScreen>
 
     if (result['success'] == true) {
       final sessionId = result['session']['id'] as int;
+      // FIX #14 : _saveExercises gère maintenant les erreurs et notifie l'utilisateur
       if (_exercises.isNotEmpty) await _saveExercises(sessionId);
       final prediction = await MemberService.getAIPrediction(
         widget.memberId,
@@ -231,10 +232,11 @@ class _NewSessionScreenState extends State<NewSessionScreen>
     }
   }
 
+  // FIX #14 : erreur de sauvegarde des exercices explicitement remontée à l'utilisateur
   Future<void> _saveExercises(int sessionId) async {
     try {
       final token = await AuthService.getToken();
-      await http
+      final response = await http
           .post(
             Uri.parse(
               '${ApiConfig.baseUrl}/sessions/$sessionId/exercises/bulk',
@@ -252,7 +254,19 @@ class _NewSessionScreenState extends State<NewSessionScreen>
             ),
           )
           .timeout(const Duration(seconds: 15));
-    } catch (_) {}
+
+      if (response.statusCode != 200 && mounted) {
+        _snack(
+          'Exercices non sauvegardés (erreur ${response.statusCode}). La séance a été enregistrée.',
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        _snack(
+          'Exercices non sauvegardés : vérifiez votre connexion. La séance a été enregistrée.',
+        );
+      }
+    }
   }
 
   void _snack(String msg) {
@@ -393,7 +407,6 @@ class _NewSessionScreenState extends State<NewSessionScreen>
     return ListView(
       padding: const EdgeInsets.all(16),
       children: [
-        // Profil incomplet
         if (!_profileComplete)
           _WarningBanner(
             message:
@@ -407,7 +420,6 @@ class _NewSessionScreenState extends State<NewSessionScreen>
             ).then((_) => _checkProfile()),
           ),
 
-        // Groupes de muscles
         ..._kMuscleGroups.map(
           (group) => _MuscleGroupSection(
             groupName: group['group'] as String,
@@ -423,7 +435,6 @@ class _NewSessionScreenState extends State<NewSessionScreen>
 
         const SizedBox(height: 8),
 
-        // Cardio toggle
         _CardioToggleCard(
           hasCardio: _hasCardio,
           cardioType: _cardioType,
@@ -431,7 +442,6 @@ class _NewSessionScreenState extends State<NewSessionScreen>
           onSelectType: (type) => setState(() => _cardioType = type),
         ),
 
-        // Récap sélection
         if (_selectedMuscles.isNotEmpty) ...[
           const SizedBox(height: 16),
           _SelectionSummary(muscles: _selectedMuscles),
@@ -450,7 +460,6 @@ class _NewSessionScreenState extends State<NewSessionScreen>
     return ListView(
       padding: const EdgeInsets.all(16),
       children: [
-        // Durée
         _SectionCard(
           icon: Icons.timer_rounded,
           color: _kGreen,
@@ -464,7 +473,6 @@ class _NewSessionScreenState extends State<NewSessionScreen>
         ),
         const SizedBox(height: 14),
 
-        // Exercices par muscle sélectionné
         if (_selectedMuscles.isNotEmpty) ...[
           _ExercisesSection(
             muscles: _selectedMuscles,
@@ -476,7 +484,6 @@ class _NewSessionScreenState extends State<NewSessionScreen>
           const SizedBox(height: 14),
         ],
 
-        // Cardio détails
         if (_hasCardio) ...[
           _SectionCard(
             icon: Icons.favorite_rounded,
@@ -504,7 +511,6 @@ class _NewSessionScreenState extends State<NewSessionScreen>
           const SizedBox(height: 14),
         ],
 
-        // Ressenti
         _SectionCard(
           icon: Icons.sentiment_satisfied_alt_rounded,
           color: _kOrange,
@@ -555,7 +561,6 @@ class _NewSessionScreenState extends State<NewSessionScreen>
       padding: const EdgeInsets.all(16),
       child: Column(
         children: [
-          // Succès header
           Container(
             width: double.infinity,
             padding: const EdgeInsets.all(24),
@@ -606,7 +611,6 @@ class _NewSessionScreenState extends State<NewSessionScreen>
 
           const SizedBox(height: 20),
 
-          // Prédiction IA
           if (_prediction != null) ...[
             const Align(
               alignment: Alignment.centerLeft,
@@ -624,11 +628,10 @@ class _NewSessionScreenState extends State<NewSessionScreen>
             const SizedBox(height: 20),
           ],
 
-          // Bouton retour
           SizedBox(
             width: double.infinity,
             child: ElevatedButton(
-              onPressed: () => Navigator.pop(context),
+              onPressed: () => Navigator.pop(context, true),
               style: ElevatedButton.styleFrom(
                 backgroundColor: _kGreen,
                 shape: RoundedRectangleBorder(
@@ -1009,7 +1012,6 @@ class _ExercisesSection extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // Header
           Container(
             padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
             decoration: BoxDecoration(
@@ -1044,7 +1046,6 @@ class _ExercisesSection extends StatelessWidget {
             ),
           ),
 
-          // Exercices déjà ajoutés
           if (exercises.isNotEmpty) ...[
             ...exercises.asMap().entries.map(
               (entry) => _ExerciseRow(
@@ -1056,7 +1057,6 @@ class _ExercisesSection extends StatelessWidget {
             ),
           ],
 
-          // Boutons ajouter par muscle
           Padding(
             padding: const EdgeInsets.all(12),
             child: Column(
