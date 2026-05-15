@@ -6,6 +6,7 @@ import com.example.project_backend.Entity.TrainingSession;
 import com.example.project_backend.Service.AIService;
 import com.example.project_backend.Service.MemberProfileService;
 import com.example.project_backend.Service.MemberService;
+import com.example.project_backend.Service.MuscleRecoveryService;
 import com.example.project_backend.Service.TrainingSessionService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -13,11 +14,11 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
 import java.time.LocalDate;
+import java.time.temporal.ChronoUnit;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
-import java.time.temporal.ChronoUnit;
 
 @RestController
 @RequestMapping("/api/ai")
@@ -26,20 +27,27 @@ public class AIController {
 
     private static final Logger log = LoggerFactory.getLogger(AIController.class);
 
-    private final AIService aiService;
-    private final MemberService memberService;
+    private final AIService              aiService;
+    private final MemberService          memberService;
     private final TrainingSessionService trainingSessionService;
-    private final MemberProfileService memberProfileService;
+    private final MemberProfileService   memberProfileService;
+    private final MuscleRecoveryService  muscleRecoveryService;
 
     public AIController(AIService aiService,
                         MemberService memberService,
                         TrainingSessionService trainingSessionService,
-                        MemberProfileService memberProfileService) {
-        this.aiService = aiService;
-        this.memberService = memberService;
+                        MemberProfileService memberProfileService,
+                        MuscleRecoveryService muscleRecoveryService) {
+        this.aiService              = aiService;
+        this.memberService          = memberService;
         this.trainingSessionService = trainingSessionService;
-        this.memberProfileService = memberProfileService;
+        this.memberProfileService   = memberProfileService;
+        this.muscleRecoveryService  = muscleRecoveryService;
     }
+
+    // ════════════════════════════════════════════════════════════════
+    // HELPER
+    // ════════════════════════════════════════════════════════════════
 
     private List<TrainingSession> getSessionsOrFallback(Long memberId, Long sessionId) {
         List<TrainingSession> sessions = trainingSessionService.getSessionsLastWeek(memberId);
@@ -49,6 +57,10 @@ public class AIController {
         }
         return sessions;
     }
+
+    // ════════════════════════════════════════════════════════════════
+    // GET — Prédiction fatigue
+    // ════════════════════════════════════════════════════════════════
 
     @GetMapping("/fatigue/{memberId}/{sessionId}")
     public ResponseEntity<?> getFatigue(
@@ -64,12 +76,16 @@ public class AIController {
         } catch (RuntimeException e) {
             log.error("❌ Erreur fatigue: {}", e.getMessage());
             return ResponseEntity.status(404).body(Map.of(
-                    "error", e.getMessage(),
-                    "memberId", memberId,
+                    "error",     e.getMessage(),
+                    "memberId",  memberId,
                     "sessionId", sessionId
             ));
         }
     }
+
+    // ════════════════════════════════════════════════════════════════
+    // GET — Prédiction blessure
+    // ════════════════════════════════════════════════════════════════
 
     @GetMapping("/injury/{memberId}/{sessionId}")
     public ResponseEntity<?> getInjury(
@@ -85,12 +101,16 @@ public class AIController {
         } catch (RuntimeException e) {
             log.error("❌ Erreur blessure: {}", e.getMessage());
             return ResponseEntity.status(404).body(Map.of(
-                    "error", e.getMessage(),
-                    "memberId", memberId,
+                    "error",     e.getMessage(),
+                    "memberId",  memberId,
                     "sessionId", sessionId
             ));
         }
     }
+
+    // ════════════════════════════════════════════════════════════════
+    // GET — Prédiction complète (fatigue + blessure + surcharge + profil)
+    // ════════════════════════════════════════════════════════════════
 
     @GetMapping("/predict/{memberId}/{sessionId}")
     public ResponseEntity<?> getFullPrediction(
@@ -100,19 +120,17 @@ public class AIController {
         log.info("🎯 Prédiction COMPLÈTE — memberId={}, sessionId={}", memberId, sessionId);
 
         try {
-            Member member = memberService.getMemberById(memberId);
-            TrainingSession lastSession = trainingSessionService.getById(sessionId);
+            Member member                        = memberService.getMemberById(memberId);
+            TrainingSession lastSession          = trainingSessionService.getById(sessionId);
             List<TrainingSession> previousSessions = trainingSessionService.getSessionsLastWeek(memberId);
 
             Map<String, Object> result = new HashMap<>();
 
-            // Récupérer les prédictions
+            // ── Prédictions ──
             Map<String, Object> fatigue = aiService.predictFatigueWithAI(member, previousSessions);
-            Map<String, Object> injury = aiService.predictInjuryWithAI(member, previousSessions);
+            Map<String, Object> injury  = aiService.predictInjuryWithAI(member, previousSessions);
 
-            // ═══════════════════════════════════════════════════════════
-            // Compatibilité des clés (snake_case vs camelCase)
-            // ═══════════════════════════════════════════════════════════
+            // Compatibilité des clés snake_case / camelCase
             if (injury.containsKey("risk_level") && !injury.containsKey("riskLevel")) {
                 injury.put("riskLevel", injury.get("risk_level"));
             }
@@ -120,133 +138,148 @@ public class AIController {
                 fatigue.put("probaFatigued", fatigue.get("proba_fatigued"));
             }
 
-            result.put("fatigue", fatigue);
-            result.put("injury", injury);
-            result.put("overload", aiService.analyzeOverload(member, lastSession, previousSessions));
-            result.put("memberId", memberId);
-            result.put("sessionId", sessionId);
+            result.put("fatigue",          fatigue);
+            result.put("injury",           injury);
+            result.put("overload",         aiService.analyzeOverload(member, lastSession, previousSessions));
+            result.put("memberId",         memberId);
+            result.put("sessionId",        sessionId);
             result.put("sessionsAnalyzed", previousSessions.size());
-            result.put("period", "7 derniers jours");
+            result.put("period",           "7 derniers jours");
 
-            // ═══════════════════════════════════════════════════════════
-            // ✅ NOUVEAU : Calcul des jours de repos dynamiques
-            // ═══════════════════════════════════════════════════════════
-            Optional<MemberProfile> profileOpt = memberProfileService.getProfile(memberId);
-
-            // Date de la dernière séance
-            LocalDate lastSessionDate = lastSession.getDate() != null
-                    ? lastSession.getDate()
-                    : LocalDate.now();
-
-            // Jours écoulés depuis la dernière séance
-            long daysSinceLastSession = ChronoUnit.DAYS.between(lastSessionDate, LocalDate.now());
+            // ── Informations temporelles ──
+            LocalDate lastSessionDate      = lastSession.getDate() != null
+                    ? lastSession.getDate() : LocalDate.now();
+            long daysSinceLastSession      = ChronoUnit.DAYS.between(lastSessionDate, LocalDate.now());
             result.put("daysSinceLastSession", daysSinceLastSession);
-            result.put("lastSessionDate", lastSessionDate.toString());
+            result.put("lastSessionDate",      lastSessionDate.toString());
 
-            // Jours de repos recommandés (calcul original basé sur la séance)
-            int recommendedRestDays = 0;
-            int remainingRestDays = 0;
+            // ── Lien vers l'analyse musculaire détaillée ──
+            // Le repos par muscle est maintenant géré par GET /api/ai/recovery/{memberId}
+            result.put("recoveryNote",
+                    "Consultez /api/ai/recovery/" + memberId +
+                            " pour l'analyse de récupération musculaire détaillée.");
 
-            if (profileOpt.isPresent()) {
-                MemberProfile profile = profileOpt.get();
-                recommendedRestDays = aiService.getRecommendedRestDays(profile, lastSession);
-
-                // Jours restants = recommandés - jours déjà écoulés
-                remainingRestDays = (int) (recommendedRestDays - daysSinceLastSession);
-                if (remainingRestDays < 0) remainingRestDays = 0;
-
-                result.put("recommendedRestDays", recommendedRestDays);
-                result.put("remainingRestDays", remainingRestDays);
-
-                // Message dynamique selon les jours restants
-                String restMessage;
-                if (remainingRestDays == 0) {
-                    restMessage = "✅ Récupération terminée. Vous pouvez reprendre l'entraînement !";
-                } else if (remainingRestDays == 1) {
-                    restMessage = "💤 Encore 1 jour de repos recommandé.";
-                } else {
-                    restMessage = "💤 Encore " + remainingRestDays + " jours de repos recommandés.";
-                }
-                result.put("restMessage", restMessage);
-            } else {
-                result.put("recommendedRestDays", null);
-                result.put("remainingRestDays", null);
-                result.put("restMessage", null);
-            }
+            // ── Profil IA ──
+            Optional<MemberProfile> profileOpt = memberProfileService.getProfile(memberId);
 
             if (profileOpt.isPresent()) {
                 MemberProfile profile = profileOpt.get();
                 Map<String, Object> profileMap = memberProfileService.toMap(profile);
 
-                double goalMult = memberProfileService.goalRiskMultiplier(profile.getPrimaryGoal());
-                double chronicMult = memberProfileService.chronicPainRiskMultiplier(profile);
+                double goalMult     = memberProfileService.goalRiskMultiplier(profile.getPrimaryGoal());
+                double chronicMult  = memberProfileService.chronicPainRiskMultiplier(profile);
                 double recoveryMult = memberProfileService.recoveryMultiplier(profile);
 
-                result.put("memberProfile", profileMap);
-                result.put("personalizedRecommendations", buildPersonalizedRecommendations(profile, previousSessions));
-                result.put("medicalAlerts", buildMedicalAlerts(profile));
+                result.put("memberProfile",              profileMap);
+                result.put("personalizedRecommendations",
+                        buildPersonalizedRecommendations(profile, previousSessions));
+                result.put("medicalAlerts",              buildMedicalAlerts(profile));
 
                 result.put("profileRiskMultipliers", Map.of(
-                        "goal", goalMult,
+                        "goal",      goalMult,
                         "chronicPain", chronicMult,
-                        "recovery", recoveryMult,
-                        "combined", Math.round(goalMult * chronicMult * recoveryMult * 100.0) / 100.0
+                        "recovery",  recoveryMult,
+                        "combined",  Math.round(goalMult * chronicMult * recoveryMult * 100.0) / 100.0
                 ));
 
-                result.put("levelConsistency", checkLevelConsistency(profile, previousSessions));
+                result.put("levelConsistency",
+                        checkLevelConsistency(profile, previousSessions));
 
                 log.info("✅ Profil IA intégré — objectif={}, niveau={}",
                         profile.getPrimaryGoal(), profile.getSelfDeclaredLevel());
             } else {
-                result.put("memberProfile", null);
+                result.put("memberProfile",  null);
                 result.put("profileComplete", false);
-                result.put("profileMessage", "Profil IA non renseigné — complétez votre profil pour des recommandations personnalisées");
+                result.put("profileMessage",
+                        "Profil IA non renseigné — complétez votre profil pour des recommandations personnalisées");
             }
 
-            log.info("✅ Prédiction complète retournée — {} séances analysées", previousSessions.size());
+            log.info("✅ Prédiction complète retournée — {} séances analysées",
+                    previousSessions.size());
             return ResponseEntity.ok(result);
 
         } catch (RuntimeException e) {
             log.error("❌ Erreur prédiction complète: {}", e.getMessage());
             return ResponseEntity.status(404).body(Map.of(
-                    "error", e.getMessage(),
-                    "memberId", memberId,
+                    "error",     e.getMessage(),
+                    "memberId",  memberId,
                     "sessionId", sessionId
             ));
         }
     }
 
+    // ════════════════════════════════════════════════════════════════
+    // GET — Récupération musculaire détaillée (NOUVEAU)
+    // Remplace l'ancien système de "X jours de repos globaux"
+    // ════════════════════════════════════════════════════════════════
+
+    @GetMapping("/recovery/{memberId}")
+    public ResponseEntity<?> getMuscleRecovery(@PathVariable Long memberId) {
+        log.info("🎯 Analyse RÉCUPÉRATION MUSCULAIRE — memberId={}", memberId);
+        try {
+            Map<String, Object> result =
+                    muscleRecoveryService.getMuscleRecoveryStatus(memberId);
+            return ResponseEntity.ok(result);
+        } catch (RuntimeException e) {
+            log.error("❌ Erreur récupération musculaire: {}", e.getMessage());
+            return ResponseEntity.status(404).body(Map.of(
+                    "error",    e.getMessage(),
+                    "memberId", memberId
+            ));
+        }
+    }
+
+    // ════════════════════════════════════════════════════════════════
+    // GET — Health check
+    // ════════════════════════════════════════════════════════════════
+
     @GetMapping("/health")
     public ResponseEntity<Map<String, Object>> health() {
         return ResponseEntity.ok(Map.of(
-                "status", "available",
-                "service", "AI Controller + MemberProfile",
-                "version", "3.4"
+                "status",  "available",
+                "service", "AI Controller + MuscleRecovery + MemberProfile",
+                "version", "4.0",
+                "endpoints", List.of(
+                        "/api/ai/fatigue/{memberId}/{sessionId}",
+                        "/api/ai/injury/{memberId}/{sessionId}",
+                        "/api/ai/predict/{memberId}/{sessionId}",
+                        "/api/ai/recovery/{memberId}"
+                )
         ));
     }
 
-    private List<String> buildPersonalizedRecommendations(MemberProfile profile, List<TrainingSession> sessions) {
+    // ════════════════════════════════════════════════════════════════
+    // HELPERS PRIVÉS
+    // ════════════════════════════════════════════════════════════════
+
+    private List<String> buildPersonalizedRecommendations(MemberProfile profile,
+                                                          List<TrainingSession> sessions) {
         List<String> recs = new java.util.ArrayList<>();
         if (profile.getPrimaryGoal() == null) return recs;
 
         int sessionCount = sessions.size();
-        int totalMin = sessions.stream().mapToInt(TrainingSession::getDuration).sum();
-        int totalCardio = sessions.stream().mapToInt(TrainingSession::getCardioDurationMinutes).sum();
-        String level = profile.getSelfDeclaredLevel() != null ? profile.getSelfDeclaredLevel().name() : "BEGINNER";
+        int totalMin     = sessions.stream().mapToInt(TrainingSession::getDuration).sum();
+        int totalCardio  = sessions.stream().mapToInt(TrainingSession::getCardioDurationMinutes).sum();
+        String level     = profile.getSelfDeclaredLevel() != null
+                ? profile.getSelfDeclaredLevel().name() : "BEGINNER";
 
         switch (profile.getPrimaryGoal()) {
             case WEIGHT_LOSS -> {
-                if (totalCardio < 90) recs.add("🏃 Objectif perte de poids : visez au moins 150 min de cardio/semaine.");
-                if (sessionCount < 3) recs.add("💡 Pour optimiser la perte de poids, ciblez 4-5 séances par semaine.");
+                if (totalCardio < 90)
+                    recs.add("🏃 Objectif perte de poids : visez au moins 150 min de cardio/semaine.");
+                if (sessionCount < 3)
+                    recs.add("💡 Pour optimiser la perte de poids, ciblez 4-5 séances par semaine.");
                 recs.add("💡 Priorisez les exercices composés (squats, soulevé de terre, tractions).");
             }
             case MUSCLE_GAIN -> {
-                if (totalMin < 180) recs.add("💪 Objectif prise de masse : votre volume de muscu cette semaine est faible.");
+                if (totalMin < 180)
+                    recs.add("💪 Objectif prise de masse : votre volume de muscu cette semaine est faible.");
                 recs.add("💡 Concentrez-vous sur la progression des charges chaque semaine (+2,5 à 5% max).");
                 recs.add("💡 Assurez-vous d'avoir un surplus calorique et 1,6-2,2g de protéines / kg.");
             }
             case ENDURANCE -> {
-                if (totalCardio < 120) recs.add("🏅 Objectif endurance : augmentez progressivement le volume cardio.");
+                if (totalCardio < 120)
+                    recs.add("🏅 Objectif endurance : augmentez progressivement le volume cardio.");
                 recs.add("💡 Alternez séances longues à intensité modérée et séances courtes à haute intensité.");
             }
             case TONING -> {
@@ -263,7 +296,8 @@ public class AIController {
                 recs.add("🏆 Mode performance : suivez un programme périodisé.");
                 recs.add("💡 Surveillez de près votre récupération — c'est là que la performance se construit.");
             }
-            case GENERAL_FITNESS -> recs.add("💚 Objectif bien-être : continuez votre routine équilibrée.");
+            case GENERAL_FITNESS ->
+                    recs.add("💚 Objectif bien-être : continuez votre routine équilibrée.");
         }
 
         if ("BEGINNER".equals(level)) {
@@ -296,34 +330,40 @@ public class AIController {
         if (profile.getMedicalConditions() != null && !profile.getMedicalConditions().isBlank()) {
             alerts.add("⚕️ Condition médicale déclarée : " + profile.getMedicalConditions());
         }
-        if (profile.getChronicPainZones() != null && !profile.getChronicPainZones().isBlank()
+        if (profile.getChronicPainZones() != null
+                && !profile.getChronicPainZones().isBlank()
                 && !profile.getChronicPainZones().equalsIgnoreCase("NONE")) {
-            int intensity = profile.getChronicPainIntensity() != null ? profile.getChronicPainIntensity() : 0;
-            alerts.add("⚠️ Douleurs chroniques (" + profile.getChronicPainZones() + ") — intensité " + intensity + "/10.");
+            int intensity = profile.getChronicPainIntensity() != null
+                    ? profile.getChronicPainIntensity() : 0;
+            alerts.add("⚠️ Douleurs chroniques (" + profile.getChronicPainZones()
+                    + ") — intensité " + intensity + "/10.");
         }
-        if (Boolean.TRUE.equals(profile.getHasMedicalFollowUp()) && profile.getMedicalFollowUpDetail() != null) {
+        if (Boolean.TRUE.equals(profile.getHasMedicalFollowUp())
+                && profile.getMedicalFollowUpDetail() != null) {
             alerts.add("👨‍⚕️ Suivi médical actif : " + profile.getMedicalFollowUpDetail());
         }
 
         return alerts;
     }
 
-    private Map<String, Object> checkLevelConsistency(MemberProfile profile, List<TrainingSession> sessions) {
+    private Map<String, Object> checkLevelConsistency(MemberProfile profile,
+                                                      List<TrainingSession> sessions) {
         Map<String, Object> consistency = new HashMap<>();
 
         int sessionCount = sessions.size();
         String aiEstimatedLevel;
-        if (sessionCount < 10) aiEstimatedLevel = "BEGINNER";
-        else if (sessionCount < 60) aiEstimatedLevel = "INTERMEDIATE";
+        if      (sessionCount < 10)  aiEstimatedLevel = "BEGINNER";
+        else if (sessionCount < 60)  aiEstimatedLevel = "INTERMEDIATE";
         else if (sessionCount < 120) aiEstimatedLevel = "ADVANCED";
-        else aiEstimatedLevel = "ATHLETE";
+        else                         aiEstimatedLevel = "ATHLETE";
 
-        String declaredLevel = profile.getSelfDeclaredLevel() != null ? profile.getSelfDeclaredLevel().name() : "BEGINNER";
+        String declaredLevel = profile.getSelfDeclaredLevel() != null
+                ? profile.getSelfDeclaredLevel().name() : "BEGINNER";
         boolean isConsistent = declaredLevel.equals(aiEstimatedLevel);
 
-        consistency.put("declaredLevel", declaredLevel);
-        consistency.put("aiEstimatedLevel", aiEstimatedLevel);
-        consistency.put("isConsistent", isConsistent);
+        consistency.put("declaredLevel",     declaredLevel);
+        consistency.put("aiEstimatedLevel",  aiEstimatedLevel);
+        consistency.put("isConsistent",      isConsistent);
 
         if (!isConsistent) {
             if (isHigherThan(declaredLevel, aiEstimatedLevel)) {
