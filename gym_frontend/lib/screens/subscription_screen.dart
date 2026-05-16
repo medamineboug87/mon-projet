@@ -1,8 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../providers/subscription_provider.dart';
-import '../services/plan_service.dart';
-import 'payment_screen.dart';
+import '../services/subscription_service.dart';
 
 // ─── Design tokens light ───
 const Color _kSurface = Color(0xFFFFFFFF);
@@ -24,23 +23,9 @@ class SubscriptionScreen extends ConsumerStatefulWidget {
 }
 
 class _SubscriptionScreenState extends ConsumerState<SubscriptionScreen> {
-  List<SubscriptionPlanModel> _plans = [];
-  bool _plansLoading = true;
-
   @override
   void initState() {
     super.initState();
-    _loadPlans();
-  }
-
-  Future<void> _loadPlans() async {
-    final plans = await PlanService.getActivePlans();
-    if (mounted) {
-      setState(() {
-        _plans = plans;
-        _plansLoading = false;
-      });
-    }
   }
 
   @override
@@ -60,7 +45,6 @@ class _SubscriptionScreenState extends ConsumerState<SubscriptionScreen> {
             icon: const Icon(Icons.refresh, color: _kText),
             onPressed: () {
               ref.invalidate(activeSubscriptionProvider(widget.memberId));
-              _loadPlans();
             },
           ),
         ],
@@ -75,7 +59,6 @@ class _SubscriptionScreenState extends ConsumerState<SubscriptionScreen> {
           return RefreshIndicator(
             onRefresh: () async {
               ref.invalidate(activeSubscriptionProvider(widget.memberId));
-              await _loadPlans();
             },
             child: SingleChildScrollView(
               physics: const AlwaysScrollableScrollPhysics(),
@@ -176,8 +159,7 @@ class _SubscriptionScreenState extends ConsumerState<SubscriptionScreen> {
                   ),
                   const SizedBox(width: 12),
                   Text(
-                    // FIX #17 : utilise _getPlanDisplayName avec subType sécurisé
-                    _getPlanDisplayName(subType),
+                    subType,
                     style: const TextStyle(
                       color: Colors.white,
                       fontSize: 28,
@@ -250,7 +232,7 @@ class _SubscriptionScreenState extends ConsumerState<SubscriptionScreen> {
 
         const SizedBox(height: 24),
         const Text(
-          'Nos abonnements',
+          'Historique de mes abonnements',
           style: TextStyle(
             color: _kText,
             fontSize: 18,
@@ -258,12 +240,7 @@ class _SubscriptionScreenState extends ConsumerState<SubscriptionScreen> {
           ),
         ),
         const SizedBox(height: 16),
-        _buildPlansList(
-          context,
-          ref,
-          isLocked: isLocked,
-          currentType: subType == 'N/A' ? null : subType,
-        ),
+        _buildHistory(),
       ],
     );
   }
@@ -285,7 +262,7 @@ class _SubscriptionScreenState extends ConsumerState<SubscriptionScreen> {
               SizedBox(width: 12),
               Expanded(
                 child: Text(
-                  'Aucun abonnement actif. Choisissez un plan pour accéder à toutes les fonctionnalités.',
+                  'Aucun abonnement actif.',
                   style: TextStyle(color: _kText, fontSize: 13),
                 ),
               ),
@@ -294,7 +271,7 @@ class _SubscriptionScreenState extends ConsumerState<SubscriptionScreen> {
         ),
         const SizedBox(height: 24),
         const Text(
-          'Choisissez votre abonnement',
+          'Historique de mes abonnements',
           style: TextStyle(
             color: _kText,
             fontSize: 18,
@@ -302,208 +279,123 @@ class _SubscriptionScreenState extends ConsumerState<SubscriptionScreen> {
           ),
         ),
         const SizedBox(height: 16),
-        _buildPlansList(context, ref, isLocked: false, currentType: null),
+        _buildHistory(),
       ],
     );
   }
 
-  Widget _buildPlansList(
-    BuildContext context,
-    WidgetRef ref, {
-    required bool isLocked,
-    required String? currentType,
-  }) {
-    if (_plansLoading) {
-      return const Center(
-        child: Padding(
-          padding: EdgeInsets.all(20),
-          child: CircularProgressIndicator(color: _kGreen),
-        ),
-      );
-    }
-
-    if (_plans.isEmpty) {
-      return Container(
-        padding: const EdgeInsets.all(20),
-        decoration: BoxDecoration(
-          color: _kSurf2,
-          borderRadius: BorderRadius.circular(12),
-          border: Border.all(color: _kBorder),
-        ),
-        child: const Center(
-          child: Text(
-            'Aucun plan disponible pour le moment.',
-            style: TextStyle(color: _kTextSub),
-          ),
-        ),
-      );
-    }
-
-    return Column(
-      children: _plans
-          .map(
-            (plan) => Padding(
-              padding: const EdgeInsets.only(bottom: 12),
-              child: _buildPlanCard(
-                context,
-                plan,
-                ref,
-                isLocked: isLocked,
-                currentType: currentType,
+  Widget _buildHistory() {
+    return FutureBuilder<List<dynamic>>(
+      future: SubscriptionService.getMemberSubscriptions(widget.memberId),
+      builder: (context, snapshot) {
+        if (snapshot.connectionState == ConnectionState.waiting) {
+          return const Center(child: CircularProgressIndicator(color: _kGreen));
+        }
+        if (!snapshot.hasData || snapshot.data!.isEmpty) {
+          return Container(
+            padding: const EdgeInsets.all(20),
+            decoration: BoxDecoration(
+              color: _kSurf2,
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: _kBorder),
+            ),
+            child: const Center(
+              child: Text(
+                'Aucun historique disponible.',
+                style: TextStyle(color: _kTextSub),
               ),
             ),
-          )
-          .toList(),
-    );
-  }
+          );
+        }
 
-  Widget _buildPlanCard(
-    BuildContext context,
-    SubscriptionPlanModel plan,
-    WidgetRef ref, {
-    required bool isLocked,
-    required String? currentType,
-  }) {
-    final isCurrentPlan = currentType == plan.name;
-    final Color planColor = _hexToColor(plan.color);
+        final history = snapshot.data!;
+        return Column(
+          children: history.map((sub) {
+            final status = sub['status'] ?? '';
+            final type = sub['type'] ?? 'N/A';
+            final price = (sub['price'] as num?)?.toDouble() ?? 0;
+            final startDate = sub['startDate'] ?? '';
+            final endDate = sub['endDate'] ?? '';
 
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: const Color(0xFFEEF1F8),
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(
-          color: isCurrentPlan ? planColor : planColor.withValues(alpha: 0.3),
-          width: isCurrentPlan ? 2 : 1,
-        ),
-      ),
-      child: Column(
-        children: [
-          Row(
-            children: [
-              Text(plan.emoji, style: const TextStyle(fontSize: 24)),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      plan.displayName,
-                      style: TextStyle(
-                        color: planColor,
-                        fontWeight: FontWeight.bold,
-                        fontSize: 15,
-                      ),
-                    ),
-                    if (plan.description != null &&
-                        plan.description!.isNotEmpty)
-                      Text(
-                        plan.description!,
-                        style: const TextStyle(color: _kTextSub, fontSize: 11),
-                      ),
-                    Text(
-                      plan.durationLabel,
-                      style: const TextStyle(color: _kTextSub, fontSize: 11),
-                    ),
-                  ],
-                ),
+            Color statusColor = status == 'ACTIVE'
+                ? _kGreen
+                : status == 'CANCELLED'
+                ? _kRed
+                : _kOrange;
+
+            return Container(
+              margin: const EdgeInsets.only(bottom: 12),
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: _kSurf2,
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: _kBorder),
               ),
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.end,
+              child: Row(
                 children: [
-                  Text(
-                    '${plan.price.toStringAsFixed(0)} DT',
-                    style: const TextStyle(
-                      color: _kText,
-                      fontWeight: FontWeight.bold,
-                      fontSize: 16,
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          type,
+                          style: const TextStyle(
+                            color: _kText,
+                            fontWeight: FontWeight.bold,
+                            fontSize: 15,
+                          ),
+                        ),
+                        const SizedBox(height: 4),
+                        Text(
+                          '$startDate → $endDate',
+                          style: const TextStyle(
+                            color: _kTextSub,
+                            fontSize: 12,
+                          ),
+                        ),
+                      ],
                     ),
                   ),
-                  if (isCurrentPlan)
-                    Container(
-                      margin: const EdgeInsets.only(top: 4),
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 8,
-                        vertical: 2,
+                  Column(
+                    crossAxisAlignment: CrossAxisAlignment.end,
+                    children: [
+                      Text(
+                        '${price.toStringAsFixed(0)} DT',
+                        style: const TextStyle(
+                          color: _kText,
+                          fontWeight: FontWeight.bold,
+                        ),
                       ),
-                      decoration: BoxDecoration(
-                        color: planColor.withValues(alpha: 0.2),
-                        borderRadius: BorderRadius.circular(10),
+                      const SizedBox(height: 4),
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 8,
+                          vertical: 3,
+                        ),
+                        decoration: BoxDecoration(
+                          color: statusColor.withValues(alpha: 0.1),
+                          borderRadius: BorderRadius.circular(8),
+                          border: Border.all(
+                            color: statusColor.withValues(alpha: 0.4),
+                          ),
+                        ),
+                        child: Text(
+                          status,
+                          style: TextStyle(
+                            color: statusColor,
+                            fontSize: 11,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
                       ),
-                      child: Text(
-                        'Actuel',
-                        style: TextStyle(color: planColor, fontSize: 10),
-                      ),
-                    ),
+                    ],
+                  ),
                 ],
               ),
-            ],
-          ),
-          if (!isCurrentPlan) ...[
-            const SizedBox(height: 12),
-            SizedBox(
-              width: double.infinity,
-              child: isLocked
-                  ? ElevatedButton.icon(
-                      onPressed: null,
-                      icon: const Icon(Icons.lock, size: 16),
-                      label: const Text('Non disponible'),
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: _kBorder,
-                        foregroundColor: Colors.black38,
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(8),
-                        ),
-                      ),
-                    )
-                  : ElevatedButton(
-                      onPressed: () {
-                        Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                            builder: (_) => PaymentScreen(
-                              memberId: widget.memberId,
-                              subscriptionType: plan.name,
-                              amount: plan.price,
-                            ),
-                          ),
-                        ).then(
-                          (_) => ref.invalidate(
-                            activeSubscriptionProvider(widget.memberId),
-                          ),
-                        );
-                      },
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: planColor,
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(8),
-                        ),
-                      ),
-                      child: const Text(
-                        'Souscrire',
-                        style: TextStyle(color: Colors.white),
-                      ),
-                    ),
-            ),
-          ],
-        ],
-      ),
+            );
+          }).toList(),
+        );
+      },
     );
-  }
-
-  String _getPlanDisplayName(String type) {
-    if (type == 'N/A') return type;
-    final match = _plans.where((p) => p.name == type);
-    if (match.isNotEmpty) return match.first.displayName;
-    return type;
-  }
-
-  Color _hexToColor(String hex) {
-    try {
-      final h = hex.replaceAll('#', '');
-      return Color(int.parse('FF$h', radix: 16));
-    } catch (_) {
-      return _kGreen;
-    }
   }
 }

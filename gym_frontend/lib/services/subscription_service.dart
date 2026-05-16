@@ -26,6 +26,33 @@ class SubscriptionService {
     }
   }
 
+  // Récupérer l'historique des abonnements d'un membre
+  static Future<List<dynamic>> getMemberSubscriptions(int memberId) async {
+    try {
+      final token = await AuthService.getToken();
+      final response = await http.get(
+        Uri.parse("${ApiConfig.baseUrl}/subscriptions/member/$memberId"),
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": "Bearer $token",
+        },
+      );
+
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        // Ton backend retourne directement une List<Subscription>
+        if (data is List) {
+          return data;
+        }
+        return [];
+      }
+      return [];
+    } catch (e) {
+      print('Erreur dans getMemberSubscriptions: $e');
+      return [];
+    }
+  }
+
   // Renouveler abonnement
   static Future<bool> renewSubscription(int subscriptionId) async {
     try {

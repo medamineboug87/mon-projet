@@ -1676,8 +1676,10 @@ class _AdminSubscriptionsScreenState extends State<AdminSubscriptionsScreen>
     // Construction dynamique de la liste des actions
     final List<MapEntry<String, VoidCallback>> actions = [];
 
-    actions.add(MapEntry('Réduction', () => _showDiscountDialog(sub)));
-    if (hasDiscount) {
+    if (status == 'PENDING') {
+      actions.add(MapEntry('Réduction', () => _showDiscountDialog(sub)));
+    }
+    if (hasDiscount && status == 'PENDING') {
       actions.add(MapEntry('Tarif normal', () => _resetPrice(id)));
     }
     if (status == 'ACTIVE') {

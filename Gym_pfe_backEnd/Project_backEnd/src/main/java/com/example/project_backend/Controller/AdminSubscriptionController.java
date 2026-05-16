@@ -302,9 +302,9 @@ public class AdminSubscriptionController {
 
             List<Subscription> targets = subscriptionType != null
                     ? subscriptionRepository.findAll().stream()
-                    .filter(s -> "ACTIVE".equals(s.getStatus()) && subscriptionType.equals(s.getType()))
+                    .filter(s -> "PENDING".equals(s.getStatus()) && subscriptionType.equals(s.getType()))
                     .toList()
-                    : subscriptionRepository.findByStatus("ACTIVE");
+                    : subscriptionRepository.findByStatus("PENDING");
 
             int count = 0;
             for (Subscription sub : targets) {

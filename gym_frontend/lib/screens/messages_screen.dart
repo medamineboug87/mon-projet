@@ -1,8 +1,5 @@
 // lib/screens/messages_screen.dart
-// ✅ CORRIGÉ : version mobile-first
-// - Gestion du clavier avec MediaQuery.viewInsets.bottom
-// - SafeArea ajouté
-// - Hauteur minimale des cibles tactiles : 44px
+// ✅ REDESIGN : version mobile-first épurée
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -20,7 +17,6 @@ const Color _kBlueL = Color(0xFFE3F2FD);
 const Color _kText = Color(0xFF1A2340);
 const Color _kTextSub = Color(0xFF6B7A99);
 const Color _kBorder = Color(0xFFDDE2EE);
-
 const Color _kMeBubble = Color(0xFF00897B);
 const Color _kThemBubble = Color(0xFFEEF1F8);
 
@@ -72,9 +68,13 @@ class _MessagesScreenState extends ConsumerState<MessagesScreen> {
     if (_messageController.text.trim().isEmpty) return;
     if (_receiverUsername == null) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Destinataire introuvable !'),
-          backgroundColor: Color(0xFFE53935),
+        SnackBar(
+          content: const Text('Destinataire introuvable !'),
+          backgroundColor: const Color(0xFFE53935),
+          behavior: SnackBarBehavior.floating,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(12),
+          ),
         ),
       );
       return;
@@ -92,9 +92,13 @@ class _MessagesScreenState extends ConsumerState<MessagesScreen> {
       ref.invalidate(unreadCountProvider(_currentUsername ?? ''));
     } else if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text("Erreur lors de l'envoi"),
-          backgroundColor: Color(0xFFE53935),
+        SnackBar(
+          content: const Text("Erreur lors de l'envoi"),
+          backgroundColor: const Color(0xFFE53935),
+          behavior: SnackBarBehavior.floating,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(12),
+          ),
         ),
       );
     }
@@ -116,53 +120,11 @@ class _MessagesScreenState extends ConsumerState<MessagesScreen> {
     final messagesAsync = ref.watch(messagesProvider(widget.memberId));
     if (!messagesAsync.isLoading) _scrollToBottom();
 
+    final accentColor = widget.isCoach ? _kBlue : _kGreen;
+
     return Scaffold(
       backgroundColor: _kBg,
-      appBar: AppBar(
-        title: Row(
-          children: [
-            Container(
-              width: 36,
-              height: 36,
-              decoration: BoxDecoration(
-                color: widget.isCoach ? _kBlueL : _kGreenL,
-                borderRadius: BorderRadius.circular(10),
-                border: Border.all(
-                  color: (widget.isCoach ? _kBlue : _kGreen).withValues(
-                    alpha: 0.3,
-                  ),
-                ),
-              ),
-              child: Icon(
-                widget.isCoach ? Icons.sports_rounded : Icons.person_rounded,
-                color: widget.isCoach ? _kBlue : _kGreen,
-                size: 18,
-              ),
-            ),
-            const SizedBox(width: 10),
-            Text(
-              widget.isCoach ? widget.memberName ?? 'Membre' : 'Coach',
-              style: const TextStyle(
-                color: _kText,
-                fontWeight: FontWeight.w700,
-              ),
-            ),
-          ],
-        ),
-        backgroundColor: _kSurface,
-        elevation: 0,
-        iconTheme: const IconThemeData(color: _kText),
-        bottom: const PreferredSize(
-          preferredSize: Size.fromHeight(0.5),
-          child: Divider(height: 0.5, color: _kBorder),
-        ),
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.refresh_rounded, color: _kTextSub),
-            onPressed: () => ref.invalidate(messagesProvider(widget.memberId)),
-          ),
-        ],
-      ),
+      appBar: _buildAppBar(accentColor),
       body: SafeArea(
         child: Column(
           children: [
@@ -176,28 +138,72 @@ class _MessagesScreenState extends ConsumerState<MessagesScreen> {
                     ? _buildEmpty()
                     : ListView.builder(
                         controller: _scrollController,
-                        padding: const EdgeInsets.all(16),
+                        padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
                         itemCount: messages.length,
                         itemBuilder: (ctx, i) {
                           final msg = messages[i];
                           final isMe =
                               msg['sender']['username'] == _currentUsername;
-                          return _buildBubble(msg, isMe);
+                          return _buildBubble(msg, isMe, accentColor);
                         },
                       ),
               ),
             ),
-            _buildInputBar(),
+            _buildInputBar(accentColor),
           ],
         ),
       ),
     );
   }
 
-  Widget _buildBubble(Map<String, dynamic> msg, bool isMe) {
+  PreferredSizeWidget _buildAppBar(Color accentColor) {
+    return AppBar(
+      backgroundColor: _kSurface,
+      elevation: 0,
+      titleSpacing: 0,
+      iconTheme: const IconThemeData(color: _kText),
+      title: Row(
+        children: [
+          Container(
+            width: 36,
+            height: 36,
+            decoration: BoxDecoration(
+              color: accentColor.withOpacity(0.12),
+              borderRadius: BorderRadius.circular(10),
+              border: Border.all(color: accentColor.withOpacity(0.25)),
+            ),
+            child: Icon(
+              widget.isCoach ? Icons.sports_rounded : Icons.person_rounded,
+              color: accentColor,
+              size: 18,
+            ),
+          ),
+          const SizedBox(width: 10),
+          Text(
+            widget.isCoach ? widget.memberName ?? 'Membre' : 'Coach',
+            style: const TextStyle(
+              color: _kText,
+              fontWeight: FontWeight.w700,
+              fontSize: 15,
+            ),
+          ),
+        ],
+      ),
+      actions: [
+        IconButton(
+          icon: const Icon(Icons.refresh_rounded, color: _kTextSub, size: 20),
+          onPressed: () => ref.invalidate(messagesProvider(widget.memberId)),
+        ),
+      ],
+      bottom: const PreferredSize(
+        preferredSize: Size.fromHeight(0.5),
+        child: Divider(height: 0.5, color: _kBorder),
+      ),
+    );
+  }
+
+  Widget _buildBubble(Map<String, dynamic> msg, bool isMe, Color accentColor) {
     final isUnread = msg['isRead'] == false;
-    final bubbleColor = isMe ? _kMeBubble : _kThemBubble;
-    final textColor = isMe ? Colors.white : _kText;
 
     return Padding(
       padding: const EdgeInsets.only(bottom: 10),
@@ -212,23 +218,19 @@ class _MessagesScreenState extends ConsumerState<MessagesScreen> {
               clipBehavior: Clip.none,
               children: [
                 Container(
-                  width: 32,
-                  height: 32,
+                  width: 28,
+                  height: 28,
                   decoration: BoxDecoration(
-                    color: widget.isCoach ? _kBlueL : _kGreenL,
+                    color: accentColor.withOpacity(0.12),
                     borderRadius: BorderRadius.circular(9),
-                    border: Border.all(
-                      color: (widget.isCoach ? _kBlue : _kGreen).withValues(
-                        alpha: 0.25,
-                      ),
-                    ),
+                    border: Border.all(color: accentColor.withOpacity(0.25)),
                   ),
                   child: Icon(
                     widget.isCoach
                         ? Icons.sports_rounded
                         : Icons.person_rounded,
-                    size: 16,
-                    color: widget.isCoach ? _kBlue : _kGreen,
+                    size: 14,
+                    color: accentColor,
                   ),
                 ),
                 if (isUnread)
@@ -261,7 +263,7 @@ class _MessagesScreenState extends ConsumerState<MessagesScreen> {
                     vertical: 10,
                   ),
                   decoration: BoxDecoration(
-                    color: bubbleColor,
+                    color: isMe ? _kMeBubble : _kThemBubble,
                     borderRadius: BorderRadius.only(
                       topLeft: const Radius.circular(16),
                       topRight: const Radius.circular(16),
@@ -270,22 +272,15 @@ class _MessagesScreenState extends ConsumerState<MessagesScreen> {
                     ),
                     border: (!isMe && isUnread)
                         ? Border.all(
-                            color: _kGreen.withValues(alpha: 0.4),
+                            color: _kGreen.withOpacity(0.4),
                             width: 1.5,
                           )
                         : null,
-                    boxShadow: [
-                      BoxShadow(
-                        color: Colors.black.withValues(alpha: 0.06),
-                        blurRadius: 6,
-                        offset: const Offset(0, 2),
-                      ),
-                    ],
                   ),
                   child: Text(
                     msg['content'] ?? '',
                     style: TextStyle(
-                      color: textColor,
+                      color: isMe ? Colors.white : _kText,
                       fontSize: 14,
                       height: 1.4,
                     ),
@@ -303,7 +298,7 @@ class _MessagesScreenState extends ConsumerState<MessagesScreen> {
                       const SizedBox(width: 4),
                       Icon(
                         isUnread ? Icons.done_rounded : Icons.done_all_rounded,
-                        size: 13,
+                        size: 12,
                         color: isUnread ? _kTextSub : _kGreen,
                       ),
                     ],
@@ -315,14 +310,14 @@ class _MessagesScreenState extends ConsumerState<MessagesScreen> {
           if (isMe) ...[
             const SizedBox(width: 8),
             Container(
-              width: 32,
-              height: 32,
+              width: 28,
+              height: 28,
               decoration: BoxDecoration(
                 color: _kGreenL,
                 borderRadius: BorderRadius.circular(9),
-                border: Border.all(color: _kGreen.withValues(alpha: 0.25)),
+                border: Border.all(color: _kGreen.withOpacity(0.25)),
               ),
-              child: const Icon(Icons.person_rounded, size: 16, color: _kGreen),
+              child: const Icon(Icons.person_rounded, size: 14, color: _kGreen),
             ),
           ],
         ],
@@ -330,8 +325,7 @@ class _MessagesScreenState extends ConsumerState<MessagesScreen> {
     );
   }
 
-  // ✅ CORRECTION CLAVIER : MediaQuery.viewInsets.bottom
-  Widget _buildInputBar() {
+  Widget _buildInputBar(Color accentColor) {
     return Container(
       padding: EdgeInsets.only(
         left: 12,
@@ -342,26 +336,19 @@ class _MessagesScreenState extends ConsumerState<MessagesScreen> {
       decoration: BoxDecoration(
         color: _kSurface,
         border: const Border(top: BorderSide(color: _kBorder, width: 0.5)),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.04),
-            blurRadius: 8,
-            offset: const Offset(0, -2),
-          ),
-        ],
       ),
       child: Row(
         children: [
           Expanded(
             child: TextField(
               controller: _messageController,
-              style: const TextStyle(color: _kText),
+              style: const TextStyle(color: _kText, fontSize: 14),
               maxLines: null,
               textInputAction: TextInputAction.send,
               onSubmitted: (_) => _sendMessage(),
               decoration: InputDecoration(
                 hintText: 'Écrire un message...',
-                hintStyle: const TextStyle(color: _kTextSub),
+                hintStyle: const TextStyle(color: _kTextSub, fontSize: 13),
                 filled: true,
                 fillColor: _kSurf2,
                 border: OutlineInputBorder(
@@ -376,22 +363,14 @@ class _MessagesScreenState extends ConsumerState<MessagesScreen> {
             ),
           ),
           const SizedBox(width: 8),
-          // ✅ Cible tactile 44x44 minimum
           GestureDetector(
             onTap: _sendMessage,
             child: Container(
               width: 44,
               height: 44,
               decoration: BoxDecoration(
-                color: _kGreen,
+                color: accentColor,
                 borderRadius: BorderRadius.circular(22),
-                boxShadow: [
-                  BoxShadow(
-                    color: _kGreen.withValues(alpha: 0.3),
-                    blurRadius: 8,
-                    offset: const Offset(0, 2),
-                  ),
-                ],
               ),
               child: const Icon(
                 Icons.send_rounded,
@@ -418,7 +397,7 @@ class _MessagesScreenState extends ConsumerState<MessagesScreen> {
           ),
           child: const Icon(
             Icons.chat_bubble_outline_rounded,
-            size: 32,
+            size: 30,
             color: _kTextSub,
           ),
         ),
@@ -427,14 +406,14 @@ class _MessagesScreenState extends ConsumerState<MessagesScreen> {
           'Aucun message',
           style: TextStyle(
             color: _kText,
-            fontSize: 16,
+            fontSize: 15,
             fontWeight: FontWeight.w600,
           ),
         ),
-        const SizedBox(height: 8),
-        Text(
+        const SizedBox(height: 6),
+        const Text(
           'Envoyez un message pour commencer',
-          style: const TextStyle(color: _kTextSub, fontSize: 13),
+          style: TextStyle(color: _kTextSub, fontSize: 13),
         ),
       ],
     ),
@@ -460,6 +439,9 @@ class _MessagesScreenState extends ConsumerState<MessagesScreen> {
           style: ElevatedButton.styleFrom(
             backgroundColor: _kGreen,
             minimumSize: const Size(100, 44),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(12),
+            ),
           ),
           child: const Text('Réessayer', style: TextStyle(color: Colors.white)),
         ),
@@ -471,7 +453,8 @@ class _MessagesScreenState extends ConsumerState<MessagesScreen> {
     if (dateTime == null) return '';
     try {
       final dt = DateTime.parse(dateTime);
-      return '${dt.hour.toString().padLeft(2, '0')}:${dt.minute.toString().padLeft(2, '0')}';
+      return '${dt.hour.toString().padLeft(2, '0')}:'
+          '${dt.minute.toString().padLeft(2, '0')}';
     } catch (_) {
       return '';
     }

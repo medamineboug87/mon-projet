@@ -1,7 +1,7 @@
 // lib/screens/messages_tab.dart
-// ✅ CORRIGÉ : version mobile-first
-// - Suppression du TabBar imbriqué et du PreferredSize
-// - Remplacement par 2 chips pleine largeur dans le body
+// ✅ REDESIGN : version mobile-first épurée
+// - Tabs Coach / Support fins et compacts (hauteur 44px)
+// - Badges non-lus bien visibles
 // - Pas de double Scaffold
 
 import 'package:flutter/material.dart';
@@ -13,10 +13,8 @@ import 'member_admin_chat_screen.dart';
 const Color _kSurface = Color(0xFFFFFFFF);
 const Color _kSurf2 = Color(0xFFEEF1F8);
 const Color _kGreen = Color(0xFF00897B);
-const Color _kBlue = Color(0xFF1976D2);
-const Color _kOrange = Color(0xFFF57C00);
-const Color _kRed = Color(0xFFE53935);
 const Color _kPurple = Color(0xFF7B1FA2);
+const Color _kRed = Color(0xFFE53935);
 const Color _kText = Color(0xFF1A2340);
 const Color _kTextSub = Color(0xFF6B7A99);
 const Color _kBorder = Color(0xFFDDE2EE);
@@ -42,7 +40,6 @@ class _MessagesTabState extends ConsumerState<MessagesTab> {
 
     return Scaffold(
       backgroundColor: Colors.transparent,
-      // ✅ AppBar simplifiée : plus de bottom/chips dedans
       appBar: AppBar(
         title: const Text(
           'Messages',
@@ -57,13 +54,13 @@ class _MessagesTabState extends ConsumerState<MessagesTab> {
       ),
       body: Column(
         children: [
-          // ✅ Chips pleine largeur (remplace le TabBar)
+          // ── Tabs fins pleine largeur ──
           Padding(
-            padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
+            padding: const EdgeInsets.fromLTRB(16, 4, 16, 12),
             child: Row(
               children: [
                 Expanded(
-                  child: _buildFullWidthChip(
+                  child: _TabChip(
                     icon: Icons.sports_rounded,
                     label: 'Coach',
                     badge: unreadCoach,
@@ -74,7 +71,7 @@ class _MessagesTabState extends ConsumerState<MessagesTab> {
                 ),
                 const SizedBox(width: 12),
                 Expanded(
-                  child: _buildFullWidthChip(
+                  child: _TabChip(
                     icon: Icons.support_agent_rounded,
                     label: 'Support',
                     badge: unreadAdmin,
@@ -86,7 +83,8 @@ class _MessagesTabState extends ConsumerState<MessagesTab> {
               ],
             ),
           ),
-          // ✅ Contenu (plus de TabBarView, simple condition)
+
+          // ── Contenu ──
           Expanded(
             child: IndexedStack(
               index: _selectedIndex,
@@ -100,26 +98,38 @@ class _MessagesTabState extends ConsumerState<MessagesTab> {
       ),
     );
   }
+}
 
-  // ✅ Chip pleine largeur avec hauteur minimale 44px (mobile-first)
-  Widget _buildFullWidthChip({
-    required IconData icon,
-    required String label,
-    required int badge,
-    required Color color,
-    required bool isSelected,
-    required VoidCallback onTap,
-  }) {
+// ── Widget tab chip réutilisable ──
+class _TabChip extends StatelessWidget {
+  final IconData icon;
+  final String label;
+  final int badge;
+  final Color color;
+  final bool isSelected;
+  final VoidCallback onTap;
+
+  const _TabChip({
+    required this.icon,
+    required this.label,
+    required this.badge,
+    required this.color,
+    required this.isSelected,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
     return GestureDetector(
       onTap: onTap,
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 200),
-        height: 44, // ✅ Hauteur minimale 44px (cible tactile)
+        height: 44,
         decoration: BoxDecoration(
-          color: isSelected ? color.withValues(alpha: 0.12) : _kSurf2,
+          color: isSelected ? color.withOpacity(0.12) : _kSurf2,
           borderRadius: BorderRadius.circular(24),
           border: Border.all(
-            color: isSelected ? color.withValues(alpha: 0.4) : _kBorder,
+            color: isSelected ? color.withOpacity(0.4) : _kBorder,
             width: isSelected ? 1.5 : 1,
           ),
         ),
@@ -139,7 +149,7 @@ class _MessagesTabState extends ConsumerState<MessagesTab> {
             if (badge > 0) ...[
               const SizedBox(width: 8),
               Container(
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
                 decoration: BoxDecoration(
                   color: _kRed,
                   borderRadius: BorderRadius.circular(16),
