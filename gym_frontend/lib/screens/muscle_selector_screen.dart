@@ -1,7 +1,9 @@
+// lib/screens/muscle_selector_screen.dart
+// ✅ CORRIGÉ : version mobile-first
+
 import 'package:flutter/material.dart';
 import 'exercise_screen_updated.dart';
 
-// ─── Design tokens light ───
 const Color _kSurface = Color(0xFFFFFFFF);
 const Color _kGreen = Color(0xFF00897B);
 const Color _kText = Color(0xFF1A2340);
@@ -16,14 +18,10 @@ class MuscleSelectorScreen extends StatefulWidget {
 }
 
 class _MuscleSelectorScreenState extends State<MuscleSelectorScreen> {
-  // Vue avant ou arrière
   bool _showFront = true;
-
-  // Muscles sélectionnés
   final Set<String> _selectedMuscles = {};
 
   final Map<String, int> _lastWorkedHours = {
-    // Vue Avant
     'Pectoraux': 36,
     'Biceps': 52,
     'Biceps droit': 52,
@@ -33,8 +31,6 @@ class _MuscleSelectorScreenState extends State<MuscleSelectorScreen> {
     'Quadriceps droit': 72,
     'Mollets': 30,
     'Mollets droits': 30,
-
-    // Vue Arrière
     'Dorsaux': 50,
     'Triceps': 42,
     'Triceps droit': 42,
@@ -45,9 +41,7 @@ class _MuscleSelectorScreenState extends State<MuscleSelectorScreen> {
     'Fessiers': 45,
   };
 
-  // Définition des muscles avec leurs zones cliquables
   final Map<String, MuscleInfo> _muscles = {
-    // AVANT
     'Pectoraux': MuscleInfo(
       color: _kGreen,
       frontPosition: const Rect.fromLTWH(120, 120, 110, 60),
@@ -102,8 +96,6 @@ class _MuscleSelectorScreenState extends State<MuscleSelectorScreen> {
       isFront: true,
       icon: Icons.fitness_center,
     ),
-
-    // ARRIÈRE
     'Dorsaux': MuscleInfo(
       color: _kGreen,
       frontPosition: const Rect.fromLTWH(110, 130, 130, 80),
@@ -184,7 +176,6 @@ class _MuscleSelectorScreenState extends State<MuscleSelectorScreen> {
       ),
       body: Column(
         children: [
-          // Toggle avant/arrière
           Container(
             margin: const EdgeInsets.all(16),
             decoration: BoxDecoration(
@@ -239,10 +230,9 @@ class _MuscleSelectorScreenState extends State<MuscleSelectorScreen> {
             ),
           ),
 
-          // Muscles sélectionnés
           if (_selectedMuscles.isNotEmpty)
             Container(
-              height: 40,
+              height: 50,
               margin: const EdgeInsets.symmetric(horizontal: 16),
               child: ListView(
                 scrollDirection: Axis.horizontal,
@@ -250,12 +240,12 @@ class _MuscleSelectorScreenState extends State<MuscleSelectorScreen> {
                   return Container(
                     margin: const EdgeInsets.only(right: 8),
                     padding: const EdgeInsets.symmetric(
-                      horizontal: 12,
-                      vertical: 6,
+                      horizontal: 14,
+                      vertical: 8,
                     ),
                     decoration: BoxDecoration(
                       color: _kGreen,
-                      borderRadius: BorderRadius.circular(20),
+                      borderRadius: BorderRadius.circular(24),
                     ),
                     child: Row(
                       children: [
@@ -263,18 +253,23 @@ class _MuscleSelectorScreenState extends State<MuscleSelectorScreen> {
                           muscle,
                           style: const TextStyle(
                             color: _kText,
-                            fontSize: 12,
+                            fontSize: 13,
                             fontWeight: FontWeight.bold,
                           ),
                         ),
-                        const SizedBox(width: 6),
+                        const SizedBox(width: 8),
                         GestureDetector(
                           onTap: () =>
                               setState(() => _selectedMuscles.remove(muscle)),
-                          child: const Icon(
-                            Icons.close,
-                            color: _kText,
-                            size: 14,
+                          child: Container(
+                            width: 28,
+                            height: 28,
+                            alignment: Alignment.center,
+                            child: const Icon(
+                              Icons.close,
+                              color: _kText,
+                              size: 14,
+                            ),
                           ),
                         ),
                       ],
@@ -286,11 +281,9 @@ class _MuscleSelectorScreenState extends State<MuscleSelectorScreen> {
 
           const SizedBox(height: 8),
 
-          // Mannequin interactif
           Expanded(
             child: Stack(
               children: [
-                // Corps du mannequin
                 Center(
                   child: _showFront ? _buildFrontBody() : _buildBackBody(),
                 ),
@@ -298,7 +291,6 @@ class _MuscleSelectorScreenState extends State<MuscleSelectorScreen> {
             ),
           ),
 
-          // Liste muscles cliquables
           Container(
             padding: const EdgeInsets.all(16),
             child: Wrap(
@@ -320,12 +312,12 @@ class _MuscleSelectorScreenState extends State<MuscleSelectorScreen> {
                       },
                       child: Container(
                         padding: const EdgeInsets.symmetric(
-                          horizontal: 14,
-                          vertical: 8,
+                          horizontal: 16,
+                          vertical: 10,
                         ),
                         decoration: BoxDecoration(
                           color: isSelected ? _kGreen : const Color(0xFFEEF1F8),
-                          borderRadius: BorderRadius.circular(20),
+                          borderRadius: BorderRadius.circular(24),
                           border: Border.all(
                             color: isSelected ? _kGreen : _kBorder,
                           ),
@@ -333,7 +325,7 @@ class _MuscleSelectorScreenState extends State<MuscleSelectorScreen> {
                         child: Text(
                           e.key,
                           style: TextStyle(
-                            color: isSelected ? _kText : _kTextSub,
+                            color: isSelected ? Colors.white : _kTextSub,
                             fontSize: 13,
                             fontWeight: isSelected
                                 ? FontWeight.bold
@@ -347,13 +339,12 @@ class _MuscleSelectorScreenState extends State<MuscleSelectorScreen> {
             ),
           ),
 
-          // Bouton confirmer
           if (_selectedMuscles.isNotEmpty)
             Padding(
               padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
               child: SizedBox(
                 width: double.infinity,
-                height: 50,
+                height: 52,
                 child: ElevatedButton(
                   onPressed: () {
                     Navigator.pop(context, _selectedMuscles.toList());
@@ -361,7 +352,7 @@ class _MuscleSelectorScreenState extends State<MuscleSelectorScreen> {
                   style: ElevatedButton.styleFrom(
                     backgroundColor: _kGreen,
                     shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(12),
+                      borderRadius: BorderRadius.circular(14),
                     ),
                   ),
                   child: Text(
@@ -380,7 +371,6 @@ class _MuscleSelectorScreenState extends State<MuscleSelectorScreen> {
     );
   }
 
-  // ── Mannequin Vue Avant ──
   Widget _buildFrontBody() {
     return CustomPaint(
       size: const Size(350, 500),
@@ -405,15 +395,6 @@ class _MuscleSelectorScreenState extends State<MuscleSelectorScreen> {
                       _selectedMuscles.add(e.key);
                     }
                   });
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (_) => ExerciseScreen(
-                        muscleName: e.key,
-                        lastWorkedHours: _lastWorkedHours[e.key] ?? 72,
-                      ),
-                    ),
-                  );
                 },
                 child: Container(
                   decoration: BoxDecoration(
@@ -434,7 +415,6 @@ class _MuscleSelectorScreenState extends State<MuscleSelectorScreen> {
     );
   }
 
-  // ── Mannequin Vue Arrière ──
   Widget _buildBackBody() {
     return CustomPaint(
       size: const Size(350, 500),
@@ -459,15 +439,6 @@ class _MuscleSelectorScreenState extends State<MuscleSelectorScreen> {
                       _selectedMuscles.add(e.key);
                     }
                   });
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (_) => ExerciseScreen(
-                        muscleName: e.key,
-                        lastWorkedHours: _lastWorkedHours[e.key] ?? 72,
-                      ),
-                    ),
-                  );
                 },
                 child: Container(
                   decoration: BoxDecoration(
@@ -489,7 +460,6 @@ class _MuscleSelectorScreenState extends State<MuscleSelectorScreen> {
   }
 }
 
-// ── Classe MuscleInfo ──
 class MuscleInfo {
   final Color color;
   final Rect frontPosition;
@@ -504,7 +474,6 @@ class MuscleInfo {
   });
 }
 
-// ── Painter du corps humain ──
 class BodyPainter extends CustomPainter {
   final bool showFront;
   final Set<String> selectedMuscles;
@@ -526,7 +495,7 @@ class BodyPainter extends CustomPainter {
       ..color = _kGreen.withValues(alpha: 0.6)
       ..style = PaintingStyle.fill;
 
-    // ── Tête ──
+    // Tête
     canvas.drawOval(
       Rect.fromCenter(
         center: Offset(size.width / 2, 45),
@@ -544,10 +513,10 @@ class BodyPainter extends CustomPainter {
       outlinePaint,
     );
 
-    // ── Cou ──
+    // Cou
     canvas.drawRect(Rect.fromLTWH(size.width / 2 - 15, 75, 30, 25), paint);
 
-    // ── Torse ──
+    // Torse
     final torsePath = Path()
       ..moveTo(size.width / 2 - 70, 100)
       ..lineTo(size.width / 2 + 70, 100)
@@ -557,7 +526,7 @@ class BodyPainter extends CustomPainter {
     canvas.drawPath(torsePath, paint);
     canvas.drawPath(torsePath, outlinePaint);
 
-    // ── Épaules ──
+    // Épaules
     canvas.drawOval(
       Rect.fromCenter(
         center: Offset(size.width / 2 - 80, 115),
@@ -575,7 +544,7 @@ class BodyPainter extends CustomPainter {
       paint,
     );
 
-    // ── Bras gauche ──
+    // Bras gauche
     final leftArmPath = Path()
       ..moveTo(size.width / 2 - 70, 105)
       ..lineTo(size.width / 2 - 95, 110)
@@ -585,7 +554,7 @@ class BodyPainter extends CustomPainter {
     canvas.drawPath(leftArmPath, paint);
     canvas.drawPath(leftArmPath, outlinePaint);
 
-    // ── Avant-bras gauche ──
+    // Avant-bras gauche
     final leftForearmPath = Path()
       ..moveTo(size.width / 2 - 100, 220)
       ..lineTo(size.width / 2 - 75, 220)
@@ -595,7 +564,7 @@ class BodyPainter extends CustomPainter {
     canvas.drawPath(leftForearmPath, paint);
     canvas.drawPath(leftForearmPath, outlinePaint);
 
-    // ── Bras droit ──
+    // Bras droit
     final rightArmPath = Path()
       ..moveTo(size.width / 2 + 70, 105)
       ..lineTo(size.width / 2 + 95, 110)
@@ -605,7 +574,7 @@ class BodyPainter extends CustomPainter {
     canvas.drawPath(rightArmPath, paint);
     canvas.drawPath(rightArmPath, outlinePaint);
 
-    // ── Avant-bras droit ──
+    // Avant-bras droit
     final rightForearmPath = Path()
       ..moveTo(size.width / 2 + 100, 220)
       ..lineTo(size.width / 2 + 75, 220)
@@ -615,7 +584,7 @@ class BodyPainter extends CustomPainter {
     canvas.drawPath(rightForearmPath, paint);
     canvas.drawPath(rightForearmPath, outlinePaint);
 
-    // ── Bassin ──
+    // Bassin
     final pelvisPath = Path()
       ..moveTo(size.width / 2 - 55, 278)
       ..lineTo(size.width / 2 + 55, 278)
@@ -625,7 +594,7 @@ class BodyPainter extends CustomPainter {
     canvas.drawPath(pelvisPath, paint);
     canvas.drawPath(pelvisPath, outlinePaint);
 
-    // ── Cuisse gauche ──
+    // Cuisse gauche
     final leftThighPath = Path()
       ..moveTo(size.width / 2 - 55, 303)
       ..lineTo(size.width / 2 - 10, 303)
@@ -635,7 +604,7 @@ class BodyPainter extends CustomPainter {
     canvas.drawPath(leftThighPath, paint);
     canvas.drawPath(leftThighPath, outlinePaint);
 
-    // ── Cuisse droite ──
+    // Cuisse droite
     final rightThighPath = Path()
       ..moveTo(size.width / 2 + 10, 303)
       ..lineTo(size.width / 2 + 55, 303)
@@ -645,7 +614,7 @@ class BodyPainter extends CustomPainter {
     canvas.drawPath(rightThighPath, paint);
     canvas.drawPath(rightThighPath, outlinePaint);
 
-    // ── Jambe gauche ──
+    // Jambe gauche
     final leftLegPath = Path()
       ..moveTo(size.width / 2 - 58, 418)
       ..lineTo(size.width / 2 - 15, 418)
@@ -655,7 +624,7 @@ class BodyPainter extends CustomPainter {
     canvas.drawPath(leftLegPath, paint);
     canvas.drawPath(leftLegPath, outlinePaint);
 
-    // ── Jambe droite ──
+    // Jambe droite
     final rightLegPath = Path()
       ..moveTo(size.width / 2 + 15, 418)
       ..lineTo(size.width / 2 + 58, 418)
@@ -665,14 +634,12 @@ class BodyPainter extends CustomPainter {
     canvas.drawPath(rightLegPath, paint);
     canvas.drawPath(rightLegPath, outlinePaint);
 
-    // ── Muscles sélectionnés ──
     if (showFront) {
       _paintFrontMuscles(canvas, size, selectedPaint, outlinePaint);
     } else {
       _paintBackMuscles(canvas, size, selectedPaint, outlinePaint);
     }
 
-    // ── Lignes anatomiques (avant) ──
     if (showFront) {
       _paintFrontDetails(canvas, size, outlinePaint);
     } else {
@@ -686,7 +653,6 @@ class BodyPainter extends CustomPainter {
     Paint selectedPaint,
     Paint outlinePaint,
   ) {
-    // Pectoraux
     if (selectedMuscles.contains('Pectoraux')) {
       final pectPath = Path()
         ..moveTo(size.width / 2 - 55, 105)
@@ -704,7 +670,6 @@ class BodyPainter extends CustomPainter {
       canvas.drawPath(pectPath2, selectedPaint);
     }
 
-    // Abdominaux
     if (selectedMuscles.contains('Abdominaux')) {
       for (int i = 0; i < 3; i++) {
         canvas.drawRRect(
@@ -724,7 +689,6 @@ class BodyPainter extends CustomPainter {
       }
     }
 
-    // Biceps gauche
     if (selectedMuscles.contains('Biceps')) {
       final bicepsPath = Path()
         ..moveTo(size.width / 2 - 95, 115)
@@ -735,7 +699,6 @@ class BodyPainter extends CustomPainter {
       canvas.drawPath(bicepsPath, selectedPaint);
     }
 
-    // Biceps droit
     if (selectedMuscles.contains('Biceps droit')) {
       final bicepsPath = Path()
         ..moveTo(size.width / 2 + 73, 115)
@@ -746,7 +709,6 @@ class BodyPainter extends CustomPainter {
       canvas.drawPath(bicepsPath, selectedPaint);
     }
 
-    // Épaules
     if (selectedMuscles.contains('Épaules')) {
       canvas.drawOval(
         Rect.fromCenter(
@@ -766,7 +728,6 @@ class BodyPainter extends CustomPainter {
       );
     }
 
-    // Quadriceps gauche
     if (selectedMuscles.contains('Quadriceps')) {
       final quadPath = Path()
         ..moveTo(size.width / 2 - 55, 305)
@@ -777,7 +738,6 @@ class BodyPainter extends CustomPainter {
       canvas.drawPath(quadPath, selectedPaint);
     }
 
-    // Quadriceps droit
     if (selectedMuscles.contains('Quadriceps droit')) {
       final quadPath = Path()
         ..moveTo(size.width / 2 + 12, 305)
@@ -788,7 +748,6 @@ class BodyPainter extends CustomPainter {
       canvas.drawPath(quadPath, selectedPaint);
     }
 
-    // Mollets gauche
     if (selectedMuscles.contains('Mollets')) {
       final calfPath = Path()
         ..moveTo(size.width / 2 - 57, 420)
@@ -799,7 +758,6 @@ class BodyPainter extends CustomPainter {
       canvas.drawPath(calfPath, selectedPaint);
     }
 
-    // Mollets droit
     if (selectedMuscles.contains('Mollets droits')) {
       final calfPath = Path()
         ..moveTo(size.width / 2 + 17, 420)
@@ -817,7 +775,6 @@ class BodyPainter extends CustomPainter {
     Paint selectedPaint,
     Paint outlinePaint,
   ) {
-    // Dorsaux
     if (selectedMuscles.contains('Dorsaux')) {
       final latPath = Path()
         ..moveTo(size.width / 2 - 55, 110)
@@ -835,7 +792,6 @@ class BodyPainter extends CustomPainter {
       canvas.drawPath(latPath2, selectedPaint);
     }
 
-    // Trapèzes
     if (selectedMuscles.contains('Trapèzes')) {
       final trapPath = Path()
         ..moveTo(size.width / 2 - 55, 100)
@@ -847,7 +803,6 @@ class BodyPainter extends CustomPainter {
       canvas.drawPath(trapPath, selectedPaint);
     }
 
-    // Triceps gauche
     if (selectedMuscles.contains('Triceps')) {
       final tricepsPath = Path()
         ..moveTo(size.width / 2 - 73, 115)
@@ -858,7 +813,6 @@ class BodyPainter extends CustomPainter {
       canvas.drawPath(tricepsPath, selectedPaint);
     }
 
-    // Triceps droit
     if (selectedMuscles.contains('Triceps droit')) {
       final tricepsPath = Path()
         ..moveTo(size.width / 2 + 95, 115)
@@ -869,7 +823,6 @@ class BodyPainter extends CustomPainter {
       canvas.drawPath(tricepsPath, selectedPaint);
     }
 
-    // Lombaires
     if (selectedMuscles.contains('Lombaires')) {
       canvas.drawRRect(
         RRect.fromRectAndRadius(
@@ -887,7 +840,6 @@ class BodyPainter extends CustomPainter {
       );
     }
 
-    // Fessiers
     if (selectedMuscles.contains('Fessiers')) {
       canvas.drawOval(
         Rect.fromCenter(
@@ -907,7 +859,6 @@ class BodyPainter extends CustomPainter {
       );
     }
 
-    // Ischio-jambiers gauche
     if (selectedMuscles.contains('Ischio-jambiers')) {
       final hamPath = Path()
         ..moveTo(size.width / 2 - 55, 318)
@@ -918,7 +869,6 @@ class BodyPainter extends CustomPainter {
       canvas.drawPath(hamPath, selectedPaint);
     }
 
-    // Ischio-jambiers droit
     if (selectedMuscles.contains('Ischio-jambiers droits')) {
       final hamPath = Path()
         ..moveTo(size.width / 2 + 12, 318)
@@ -932,25 +882,21 @@ class BodyPainter extends CustomPainter {
 
   void _paintFrontDetails(Canvas canvas, Size size, Paint outlinePaint) {
     final detailPaint = Paint()
-      ..color = Color(0xFF4A6FA5).withValues(alpha: 0.5)
+      ..color = const Color(0xFF4A6FA5).withValues(alpha: 0.5)
       ..style = PaintingStyle.stroke
       ..strokeWidth = 1;
 
-    // Ligne centrale
     canvas.drawLine(
       Offset(size.width / 2, 100),
       Offset(size.width / 2, 278),
       detailPaint,
     );
-
-    // Séparation pectoraux
     canvas.drawLine(
       Offset(size.width / 2 - 55, 165),
       Offset(size.width / 2 + 55, 165),
       detailPaint,
     );
 
-    // Lignes abdominaux
     for (int i = 0; i < 3; i++) {
       canvas.drawLine(
         Offset(size.width / 2 - 30, 178 + i * 30.0),
@@ -962,11 +908,10 @@ class BodyPainter extends CustomPainter {
 
   void _paintBackDetails(Canvas canvas, Size size, Paint outlinePaint) {
     final detailPaint = Paint()
-      ..color = Color(0xFF4A6FA5).withValues(alpha: 0.5)
+      ..color = const Color(0xFF4A6FA5).withValues(alpha: 0.5)
       ..style = PaintingStyle.stroke
       ..strokeWidth = 1;
 
-    // Colonne vertébrale
     for (int i = 0; i < 8; i++) {
       canvas.drawOval(
         Rect.fromCenter(

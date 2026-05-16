@@ -1,10 +1,15 @@
+// lib/screens/admin_messages_screen.dart
+// ✅ CORRIGÉ : version mobile-first
+// - TabBar sorti de l'AppBar (plus de PreferredSize)
+// - TabBar intégré dans le body comme header collé
+// - SafeArea et clavier géré dans AdminDirectMessageScreen
+
 import 'dart:async';
 import 'package:flutter/material.dart';
 import '../services/auth_service.dart';
 import '../services/message_service.dart';
 import '../services/admin_service.dart';
 
-// ─── Design tokens (référence : admin_exercises_screen) ───
 const Color _kBg = Color(0xFFF4F6FA);
 const Color _kSurface = Color(0xFFFFFFFF);
 const Color _kSurf2 = Color(0xFFEEF1F8);
@@ -295,6 +300,7 @@ class _AdminMessagesScreenState extends State<AdminMessagesScreen>
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: _kBg,
+      // ✅ AppBar simplifiée : plus de bottom TabBar
       appBar: AppBar(
         title: const Text(
           'Messagerie',
@@ -313,37 +319,49 @@ class _AdminMessagesScreenState extends State<AdminMessagesScreen>
             onPressed: _loadUsers,
           ),
         ],
-        bottom: PreferredSize(
-          preferredSize: const Size.fromHeight(
-            48,
-          ), // Hauteur totale du TabBar + ligne
-          child: Column(
-            children: [
-              Container(height: 1, color: _kBorder), // La ligne de séparation
-              TabBar(
-                controller: _tabController,
-                indicatorColor: _kGreen,
-                indicatorWeight: 2,
-                labelColor: _kGreen,
-                unselectedLabelColor: _kTextSub,
-                tabs: const [
-                  Tab(icon: Icon(Icons.people), text: 'Membres'),
-                  Tab(icon: Icon(Icons.sports), text: 'Coachs'),
-                ],
-              ),
-            ],
-          ),
-        ),
       ),
-      body: _isLoading
-          ? const Center(child: CircularProgressIndicator(color: _kGreen))
-          : TabBarView(
-              controller: _tabController,
+      body: Column(
+        children: [
+          // ✅ TabBar intégré dans le body (header collé)
+          Container(
+            color: _kSurface,
+            child: Column(
               children: [
-                _buildList(_members, isCoach: false),
-                _buildList(_coaches, isCoach: true),
+                const Divider(height: 0.5, color: _kBorder),
+                TabBar(
+                  controller: _tabController,
+                  indicatorColor: _kGreen,
+                  indicatorWeight: 2,
+                  labelColor: _kGreen,
+                  unselectedLabelColor: _kTextSub,
+                  // ✅ Hauteur minimum pour les cibles tactiles
+                  labelPadding: const EdgeInsets.symmetric(
+                    horizontal: 0,
+                    vertical: 12,
+                  ),
+                  tabs: const [
+                    Tab(icon: Icon(Icons.people), text: 'Membres'),
+                    Tab(icon: Icon(Icons.sports), text: 'Coachs'),
+                  ],
+                ),
+                const Divider(height: 0.5, color: _kBorder),
               ],
             ),
+          ),
+          // ✅ Contenu
+          Expanded(
+            child: _isLoading
+                ? const Center(child: CircularProgressIndicator(color: _kGreen))
+                : TabBarView(
+                    controller: _tabController,
+                    children: [
+                      _buildList(_members, isCoach: false),
+                      _buildList(_coaches, isCoach: true),
+                    ],
+                  ),
+          ),
+        ],
+      ),
       floatingActionButton: FloatingActionButton.extended(
         onPressed: _showBroadcastDialog,
         backgroundColor: _kGreen,
@@ -414,8 +432,8 @@ class _AdminMessagesScreenState extends State<AdminMessagesScreen>
       child: ListTile(
         contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
         leading: Container(
-          width: 42,
-          height: 42,
+          width: 44,
+          height: 44,
           decoration: BoxDecoration(
             color: color.withValues(alpha: 0.12),
             borderRadius: BorderRadius.circular(12),
@@ -434,8 +452,8 @@ class _AdminMessagesScreenState extends State<AdminMessagesScreen>
         trailing: userId == 0
             ? const Icon(Icons.error_outline, color: _kRed)
             : Container(
-                width: 36,
-                height: 36,
+                width: 40,
+                height: 40,
                 decoration: BoxDecoration(
                   color: color.withValues(alpha: 0.10),
                   borderRadius: BorderRadius.circular(10),
@@ -463,7 +481,7 @@ class _AdminMessagesScreenState extends State<AdminMessagesScreen>
 }
 
 // ════════════════════════════════════════════════════════════
-// ÉCRAN CONVERSATION DIRECTE admin ↔ utilisateur
+// ÉCRAN CONVERSATION DIRECTE admin ↔ utilisateur (CORRIGÉ)
 // ════════════════════════════════════════════════════════════
 class AdminDirectMessageScreen extends StatefulWidget {
   final int userId;
@@ -617,9 +635,9 @@ class _AdminDirectMessageScreenState extends State<AdminDirectMessageScreen> {
         backgroundColor: _kSurface,
         iconTheme: const IconThemeData(color: _kText),
         elevation: 0,
-        bottom: PreferredSize(
-          preferredSize: const Size.fromHeight(1),
-          child: Container(height: 1, color: _kBorder),
+        bottom: const PreferredSize(
+          preferredSize: Size.fromHeight(0.5),
+          child: Divider(height: 0.5, color: _kBorder),
         ),
         actions: [
           IconButton(
@@ -628,23 +646,27 @@ class _AdminDirectMessageScreenState extends State<AdminDirectMessageScreen> {
           ),
         ],
       ),
-      body: Column(
-        children: [
-          Expanded(
-            child: _isLoading
-                ? const Center(child: CircularProgressIndicator(color: _kGreen))
-                : _messages.isEmpty
-                ? _buildEmpty()
-                : ListView.builder(
-                    controller: _scrollController,
-                    padding: const EdgeInsets.all(16),
-                    itemCount: _messages.length,
-                    itemBuilder: (_, i) =>
-                        _buildBubble(_messages[i], accentColor),
-                  ),
-          ),
-          _buildInputBar(accentColor),
-        ],
+      body: SafeArea(
+        child: Column(
+          children: [
+            Expanded(
+              child: _isLoading
+                  ? const Center(
+                      child: CircularProgressIndicator(color: _kGreen),
+                    )
+                  : _messages.isEmpty
+                  ? _buildEmpty()
+                  : ListView.builder(
+                      controller: _scrollController,
+                      padding: const EdgeInsets.all(16),
+                      itemCount: _messages.length,
+                      itemBuilder: (_, i) =>
+                          _buildBubble(_messages[i], accentColor),
+                    ),
+            ),
+            _buildInputBar(accentColor),
+          ],
+        ),
       ),
     );
   }
@@ -806,9 +828,15 @@ class _AdminDirectMessageScreenState extends State<AdminDirectMessageScreen> {
     );
   }
 
+  // ✅ CORRECTION CLAVIER : MediaQuery.viewInsets.bottom
   Widget _buildInputBar(Color accentColor) {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      padding: EdgeInsets.only(
+        left: 12,
+        right: 12,
+        top: 10,
+        bottom: MediaQuery.of(context).viewInsets.bottom + 10,
+      ),
       decoration: BoxDecoration(
         color: _kSurface,
         border: const Border(top: BorderSide(color: _kBorder, width: 0.5)),

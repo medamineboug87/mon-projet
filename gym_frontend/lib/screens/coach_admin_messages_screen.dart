@@ -1,9 +1,15 @@
+// lib/screens/coach_admin_messages_screen.dart
+// ✅ CORRIGÉ : version mobile-first
+// - Scaffold avec backgroundColor fixe (plus transparent)
+// - Gestion du clavier avec MediaQuery.viewInsets.bottom
+// - SafeArea ajouté
+// - Hauteur minimale des cibles tactiles : 44px
+
 import 'dart:async';
 import 'package:flutter/material.dart';
 import '../services/message_service.dart';
 import '../services/auth_service.dart';
 
-// ─── Design tokens light ───
 const Color _kBg = Color(0xFFF4F6FA);
 const Color _kSurface = Color(0xFFFFFFFF);
 const Color _kSurf2 = Color(0xFFEEF1F8);
@@ -109,7 +115,8 @@ class _CoachAdminMessagesScreenState extends State<CoachAdminMessagesScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Colors.transparent,
+      // ✅ CORRIGÉ : backgroundColor fixe (plus transparent)
+      backgroundColor: _kBg,
       appBar: AppBar(
         title: Row(
           children: [
@@ -138,7 +145,6 @@ class _CoachAdminMessagesScreenState extends State<CoachAdminMessagesScreen> {
                 ),
               ),
             ),
-            // Indicateur de polling actif
             if (_pollingTimer?.isActive == true)
               Container(
                 width: 8,
@@ -150,7 +156,7 @@ class _CoachAdminMessagesScreenState extends State<CoachAdminMessagesScreen> {
               ),
           ],
         ),
-        backgroundColor: Colors.transparent,
+        backgroundColor: _kSurface,
         elevation: 0,
         iconTheme: const IconThemeData(color: _kText),
         actions: [
@@ -161,23 +167,26 @@ class _CoachAdminMessagesScreenState extends State<CoachAdminMessagesScreen> {
           ),
         ],
       ),
-      body: Column(
-        children: [
-          Expanded(
-            child: _isLoading
-                ? const Center(child: CircularProgressIndicator(color: _kGreen))
-                : _messages.isEmpty
-                ? _buildEmptyScreen()
-                : ListView.builder(
-                    controller: _scrollController,
-                    padding: const EdgeInsets.all(16),
-                    itemCount: _messages.length,
-                    itemBuilder: (_, i) => _buildBubble(_messages[i]),
-                  ),
-          ),
-          // CORRECTION #1 : _kSurface au lieu de _kText
-          _buildInputBar(),
-        ],
+      body: SafeArea(
+        child: Column(
+          children: [
+            Expanded(
+              child: _isLoading
+                  ? const Center(
+                      child: CircularProgressIndicator(color: _kGreen),
+                    )
+                  : _messages.isEmpty
+                  ? _buildEmptyScreen()
+                  : ListView.builder(
+                      controller: _scrollController,
+                      padding: const EdgeInsets.all(16),
+                      itemCount: _messages.length,
+                      itemBuilder: (_, i) => _buildBubble(_messages[i]),
+                    ),
+            ),
+            _buildInputBar(),
+          ],
+        ),
       ),
     );
   }
@@ -228,7 +237,6 @@ class _CoachAdminMessagesScreenState extends State<CoachAdminMessagesScreen> {
             : MainAxisAlignment.start,
         crossAxisAlignment: CrossAxisAlignment.end,
         children: [
-          // Avatar admin (gauche) avec point vert si non lu
           if (!isMe) ...[
             Stack(
               clipBehavior: Clip.none,
@@ -277,7 +285,6 @@ class _CoachAdminMessagesScreenState extends State<CoachAdminMessagesScreen> {
                     vertical: 10,
                   ),
                   decoration: BoxDecoration(
-                    // Coach (moi) = bleu, Admin = gris clair
                     color: isMe ? _kBlue : _kSurf2,
                     borderRadius: BorderRadius.only(
                       topLeft: const Radius.circular(16),
@@ -295,7 +302,6 @@ class _CoachAdminMessagesScreenState extends State<CoachAdminMessagesScreen> {
                   child: Text(
                     message['content'] ?? '',
                     style: TextStyle(
-                      // Texte blanc sur bleu, texte foncé sur gris
                       color: isMe ? Colors.white : _kText,
                       fontSize: 14,
                       height: 1.4,
@@ -323,7 +329,6 @@ class _CoachAdminMessagesScreenState extends State<CoachAdminMessagesScreen> {
               ],
             ),
           ),
-          // Avatar coach (droite)
           if (isMe) ...[
             const SizedBox(width: 8),
             Container(
@@ -342,12 +347,17 @@ class _CoachAdminMessagesScreenState extends State<CoachAdminMessagesScreen> {
     );
   }
 
-  // CORRECTION #1 : fond _kSurface (blanc) au lieu de _kText (bleu foncé)
+  // ✅ CORRECTION CLAVIER : MediaQuery.viewInsets.bottom
   Widget _buildInputBar() {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      padding: EdgeInsets.only(
+        left: 12,
+        right: 12,
+        top: 10,
+        bottom: MediaQuery.of(context).viewInsets.bottom + 10,
+      ),
       decoration: BoxDecoration(
-        color: _kSurface, // ✅ CORRIGÉ : était _kText (noir)
+        color: _kSurface,
         border: const Border(top: BorderSide(color: _kBorder, width: 0.5)),
         boxShadow: [
           BoxShadow(
@@ -364,7 +374,6 @@ class _CoachAdminMessagesScreenState extends State<CoachAdminMessagesScreen> {
               controller: _messageController,
               style: const TextStyle(color: _kText),
               maxLines: null,
-              // CORRECTION #2 : textInputAction ajouté
               textInputAction: TextInputAction.send,
               onSubmitted: (_) => _sendMessage(),
               decoration: InputDecoration(
@@ -384,13 +393,14 @@ class _CoachAdminMessagesScreenState extends State<CoachAdminMessagesScreen> {
             ),
           ),
           const SizedBox(width: 8),
+          // ✅ Cible tactile 44x44 minimum
           GestureDetector(
             onTap: _sendMessage,
             child: Container(
               width: 44,
               height: 44,
               decoration: BoxDecoration(
-                color: _kBlue, // Bouton bleu pour le coach
+                color: _kBlue,
                 borderRadius: BorderRadius.circular(22),
                 boxShadow: [
                   BoxShadow(

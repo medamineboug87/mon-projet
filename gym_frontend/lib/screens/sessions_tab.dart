@@ -1,4 +1,8 @@
 // lib/screens/sessions_tab.dart
+// ✅ CORRIGÉ : version mobile-first
+// - Suppression du double Scaffold
+// - TabBar sorti de l'AppBar, intégré dans le body
+// - IndexedStack au lieu de TabBarView (pas de conflit de navigation)
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -14,7 +18,7 @@ const Color _kTextSub = Color(0xFF6B7A99);
 const Color _kBorder = Color(0xFFDDE2EE);
 
 class SessionsTab extends ConsumerStatefulWidget {
-  final int memberId; // ✅ FIX #1 : paramètre ajouté
+  final int memberId;
 
   const SessionsTab({super.key, required this.memberId});
 
@@ -22,26 +26,14 @@ class SessionsTab extends ConsumerStatefulWidget {
   ConsumerState<SessionsTab> createState() => _SessionsTabState();
 }
 
-class _SessionsTabState extends ConsumerState<SessionsTab>
-    with SingleTickerProviderStateMixin {
-  late TabController _tabController;
-
-  @override
-  void initState() {
-    super.initState();
-    _tabController = TabController(length: 2, vsync: this);
-  }
-
-  @override
-  void dispose() {
-    _tabController.dispose();
-    super.dispose();
-  }
+class _SessionsTabState extends ConsumerState<SessionsTab> {
+  int _selectedIndex = 0; // 0 = Nouvelle, 1 = Historique
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: Colors.transparent,
+      // ✅ AppBar simplifiée : plus de bottom TabBar
       appBar: AppBar(
         title: const Text(
           'Séances',
@@ -53,25 +45,99 @@ class _SessionsTabState extends ConsumerState<SessionsTab>
         ),
         backgroundColor: Colors.transparent,
         elevation: 0,
-        bottom: TabBar(
-          controller: _tabController,
-          indicatorColor: _kGreen,
-          labelColor: _kGreen,
-          unselectedLabelColor: _kTextSub,
-          tabs: const [
-            Tab(icon: Icon(Icons.add_circle_outline), text: 'Nouvelle'),
-            Tab(icon: Icon(Icons.history), text: 'Historique'),
+      ),
+      body: Column(
+        children: [
+          // ✅ TabBar intégré dans le body (header collé)
+          Container(
+            color: Colors.transparent,
+            child: Column(
+              children: [
+                Container(
+                  margin: const EdgeInsets.symmetric(
+                    horizontal: 16,
+                    vertical: 8,
+                  ),
+                  child: Row(
+                    children: [
+                      Expanded(
+                        child: _buildTabChip(
+                          icon: Icons.add_circle_outline,
+                          label: 'Nouvelle',
+                          isSelected: _selectedIndex == 0,
+                          onTap: () => setState(() => _selectedIndex = 0),
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: _buildTabChip(
+                          icon: Icons.history,
+                          label: 'Historique',
+                          isSelected: _selectedIndex == 1,
+                          onTap: () => setState(() => _selectedIndex = 1),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const Divider(height: 0.5, color: _kBorder),
+              ],
+            ),
+          ),
+          // ✅ Contenu avec IndexedStack (pas de conflit)
+          Expanded(
+            child: IndexedStack(
+              index: _selectedIndex,
+              children: [
+                _buildNewSessionTab(),
+                SessionsHistoryScreen(memberId: widget.memberId),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildTabChip({
+    required IconData icon,
+    required String label,
+    required bool isSelected,
+    required VoidCallback onTap,
+  }) {
+    final color = isSelected ? _kGreen : _kTextSub;
+    final backgroundColor = isSelected
+        ? _kGreen.withValues(alpha: 0.12)
+        : Colors.transparent;
+
+    return GestureDetector(
+      onTap: onTap,
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 200),
+        height: 44,
+        decoration: BoxDecoration(
+          color: backgroundColor,
+          borderRadius: BorderRadius.circular(24),
+          border: Border.all(
+            color: isSelected ? _kGreen.withValues(alpha: 0.4) : _kBorder,
+            width: isSelected ? 1.5 : 1,
+          ),
+        ),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(icon, color: color, size: 18),
+            const SizedBox(width: 8),
+            Text(
+              label,
+              style: TextStyle(
+                color: color,
+                fontSize: 14,
+                fontWeight: isSelected ? FontWeight.w700 : FontWeight.w500,
+              ),
+            ),
           ],
         ),
-      ),
-      body: TabBarView(
-        controller: _tabController,
-        children: [
-          _buildNewSessionTab(),
-          SessionsHistoryScreen(
-            memberId: widget.memberId,
-          ), // ✅ FIX #4 : utilise widget.memberId directement
-        ],
       ),
     );
   }
@@ -117,7 +183,7 @@ class _SessionsTabState extends ConsumerState<SessionsTab>
                   ),
                 );
                 if (result == true && mounted) {
-                  _tabController.animateTo(1);
+                  setState(() => _selectedIndex = 1);
                 }
               },
               icon: const Icon(Icons.add_rounded, color: Colors.white),
@@ -127,9 +193,10 @@ class _SessionsTabState extends ConsumerState<SessionsTab>
               ),
               style: ElevatedButton.styleFrom(
                 backgroundColor: _kGreen,
+                minimumSize: const Size(200, 48),
                 padding: const EdgeInsets.symmetric(
                   horizontal: 32,
-                  vertical: 16,
+                  vertical: 14,
                 ),
                 shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(16),

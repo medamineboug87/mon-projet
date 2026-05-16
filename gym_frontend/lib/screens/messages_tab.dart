@@ -1,4 +1,8 @@
 // lib/screens/messages_tab.dart
+// ✅ CORRIGÉ : version mobile-first
+// - Suppression du TabBar imbriqué et du PreferredSize
+// - Remplacement par 2 chips pleine largeur dans le body
+// - Pas de double Scaffold
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -18,7 +22,7 @@ const Color _kTextSub = Color(0xFF6B7A99);
 const Color _kBorder = Color(0xFFDDE2EE);
 
 class MessagesTab extends ConsumerStatefulWidget {
-  final int memberId; // ✅ FIX #3 : paramètre ajouté
+  final int memberId;
 
   const MessagesTab({super.key, required this.memberId});
 
@@ -26,21 +30,8 @@ class MessagesTab extends ConsumerStatefulWidget {
   ConsumerState<MessagesTab> createState() => _MessagesTabState();
 }
 
-class _MessagesTabState extends ConsumerState<MessagesTab>
-    with SingleTickerProviderStateMixin {
-  late TabController _tabController;
-
-  @override
-  void initState() {
-    super.initState();
-    _tabController = TabController(length: 2, vsync: this);
-  }
-
-  @override
-  void dispose() {
-    _tabController.dispose();
-    super.dispose();
-  }
+class _MessagesTabState extends ConsumerState<MessagesTab> {
+  int _selectedIndex = 0; // 0 = Coach, 1 = Support
 
   @override
   Widget build(BuildContext context) {
@@ -51,6 +42,7 @@ class _MessagesTabState extends ConsumerState<MessagesTab>
 
     return Scaffold(
       backgroundColor: Colors.transparent,
+      // ✅ AppBar simplifiée : plus de bottom/chips dedans
       appBar: AppBar(
         title: const Text(
           'Messages',
@@ -62,108 +54,109 @@ class _MessagesTabState extends ConsumerState<MessagesTab>
         ),
         backgroundColor: Colors.transparent,
         elevation: 0,
-        bottom: PreferredSize(
-          preferredSize: const Size.fromHeight(48),
-          child: Container(
-            padding: const EdgeInsets.symmetric(horizontal: 16),
+      ),
+      body: Column(
+        children: [
+          // ✅ Chips pleine largeur (remplace le TabBar)
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
             child: Row(
               children: [
-                _buildChatChip(
-                  icon: Icons.sports_rounded,
-                  label: 'Coach',
-                  badge: unreadCoach,
-                  color: _kGreen,
-                  onTap: () => _tabController.animateTo(0),
+                Expanded(
+                  child: _buildFullWidthChip(
+                    icon: Icons.sports_rounded,
+                    label: 'Coach',
+                    badge: unreadCoach,
+                    color: _kGreen,
+                    isSelected: _selectedIndex == 0,
+                    onTap: () => setState(() => _selectedIndex = 0),
+                  ),
                 ),
                 const SizedBox(width: 12),
-                _buildChatChip(
-                  icon: Icons.support_agent_rounded,
-                  label: 'Support',
-                  badge: unreadAdmin,
-                  color: _kPurple,
-                  onTap: () => _tabController.animateTo(1),
+                Expanded(
+                  child: _buildFullWidthChip(
+                    icon: Icons.support_agent_rounded,
+                    label: 'Support',
+                    badge: unreadAdmin,
+                    color: _kPurple,
+                    isSelected: _selectedIndex == 1,
+                    onTap: () => setState(() => _selectedIndex = 1),
+                  ),
                 ),
               ],
             ),
           ),
-        ),
-      ),
-      body: TabBarView(
-        controller: _tabController,
-        children: [
-          MessagesScreen(
-            memberId: widget.memberId,
-            isCoach: false,
-          ), // ✅ utilise widget.memberId
-          const MemberAdminChatScreen(),
+          // ✅ Contenu (plus de TabBarView, simple condition)
+          Expanded(
+            child: IndexedStack(
+              index: _selectedIndex,
+              children: [
+                MessagesScreen(memberId: widget.memberId, isCoach: false),
+                const MemberAdminChatScreen(),
+              ],
+            ),
+          ),
         ],
       ),
     );
   }
 
-  Widget _buildChatChip({
+  // ✅ Chip pleine largeur avec hauteur minimale 44px (mobile-first)
+  Widget _buildFullWidthChip({
     required IconData icon,
     required String label,
     required int badge,
     required Color color,
+    required bool isSelected,
     required VoidCallback onTap,
   }) {
-    final isActive =
-        (label == 'Coach' && _tabController.index == 0) ||
-        (label == 'Support' && _tabController.index == 1);
-
-    return Expanded(
-      child: GestureDetector(
-        onTap: onTap,
-        child: AnimatedContainer(
-          duration: const Duration(milliseconds: 200),
-          padding: const EdgeInsets.symmetric(vertical: 10),
-          decoration: BoxDecoration(
-            color: isActive
-                ? color.withValues(alpha: 0.12)
-                : Colors.transparent,
-            borderRadius: BorderRadius.circular(24),
-            border: Border.all(
-              color: isActive ? color.withValues(alpha: 0.4) : _kBorder,
-              width: isActive ? 1.5 : 1,
-            ),
+    return GestureDetector(
+      onTap: onTap,
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 200),
+        height: 44, // ✅ Hauteur minimale 44px (cible tactile)
+        decoration: BoxDecoration(
+          color: isSelected ? color.withValues(alpha: 0.12) : _kSurf2,
+          borderRadius: BorderRadius.circular(24),
+          border: Border.all(
+            color: isSelected ? color.withValues(alpha: 0.4) : _kBorder,
+            width: isSelected ? 1.5 : 1,
           ),
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Icon(icon, color: isActive ? color : _kTextSub, size: 18),
+        ),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(icon, color: isSelected ? color : _kTextSub, size: 18),
+            const SizedBox(width: 8),
+            Text(
+              label,
+              style: TextStyle(
+                color: isSelected ? color : _kTextSub,
+                fontSize: 14,
+                fontWeight: isSelected ? FontWeight.w700 : FontWeight.w500,
+              ),
+            ),
+            if (badge > 0) ...[
               const SizedBox(width: 8),
-              Text(
-                label,
-                style: TextStyle(
-                  color: isActive ? color : _kTextSub,
-                  fontSize: 13,
-                  fontWeight: isActive ? FontWeight.w700 : FontWeight.w500,
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                decoration: BoxDecoration(
+                  color: _kRed,
+                  borderRadius: BorderRadius.circular(16),
+                ),
+                constraints: const BoxConstraints(minWidth: 20),
+                child: Text(
+                  badge > 99 ? '99+' : '$badge',
+                  textAlign: TextAlign.center,
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 11,
+                    fontWeight: FontWeight.w700,
+                  ),
                 ),
               ),
-              if (badge > 0) ...[
-                const SizedBox(width: 6),
-                Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 6,
-                    vertical: 2,
-                  ),
-                  decoration: BoxDecoration(
-                    color: _kRed,
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  child: Text(
-                    badge > 99 ? '99+' : '$badge',
-                    style: const TextStyle(
-                      color: Colors.white,
-                      fontSize: 10,
-                      fontWeight: FontWeight.w700,
-                    ),
-                  ),
-                ),
-              ],
             ],
-          ),
+          ],
         ),
       ),
     );

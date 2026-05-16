@@ -1,3 +1,5 @@
+// lib/screens/coach_dashboard_screen.dart
+
 import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -10,9 +12,8 @@ import 'login_screen.dart';
 import 'messages_screen.dart';
 import 'coach_profile_screen.dart';
 import 'coach_admin_messages_screen.dart';
-import 'coach_ai_feedback_screen.dart'; // ← NOUVEAU : import écran évaluations IA
+import 'coach_ai_feedback_screen.dart';
 
-// ─── Design tokens light ───
 const Color _kBg = Color(0xFFF4F6FA);
 const Color _kSurface = Color(0xFFFFFFFF);
 const Color _kSurf2 = Color(0xFFEEF1F8);
@@ -114,9 +115,9 @@ class _CoachDashboardScreenState extends ConsumerState<CoachDashboardScreen>
   }
 }
 
-// ─────────────────────────────────────────────
+// ════════════════════════════════════════════════════════════
 // BACKGROUND COACH LIGHT
-// ─────────────────────────────────────────────
+// ════════════════════════════════════════════════════════════
 class _CoachBgLight extends AnimatedWidget {
   const _CoachBgLight({required AnimationController controller})
     : super(listenable: controller);
@@ -133,7 +134,6 @@ class _CoachBgLightPainter extends CustomPainter {
 
   @override
   void paint(Canvas canvas, Size size) {
-    // Fond léger bleu-vert
     final bg = Paint()
       ..shader = LinearGradient(
         begin: Alignment.topLeft,
@@ -142,7 +142,6 @@ class _CoachBgLightPainter extends CustomPainter {
       ).createShader(Rect.fromLTWH(0, 0, size.width, size.height));
     canvas.drawRect(Rect.fromLTWH(0, 0, size.width, size.height), bg);
 
-    // Orbe bleu animé top-left
     final orb1 = Paint()
       ..shader =
           RadialGradient(
@@ -158,7 +157,6 @@ class _CoachBgLightPainter extends CustomPainter {
           );
     canvas.drawCircle(Offset(-20 + t * 25, -15 + t * 18), 200, orb1);
 
-    // Orbe vert bottom-right
     final orb2 = Paint()
       ..shader =
           RadialGradient(
@@ -178,18 +176,15 @@ class _CoachBgLightPainter extends CustomPainter {
       orb2,
     );
 
-    // Grille diagonale fine
     final grid = Paint()
       ..color = _kBlue.withValues(alpha: 0.025)
       ..strokeWidth = 0.5;
     for (double i = -size.height; i < size.width + size.height; i += 30)
       canvas.drawLine(Offset(i, 0), Offset(i + size.height, size.height), grid);
 
-    // Hexagone top-right
     _drawHex(canvas, Offset(size.width - 46, 88), 46 + t * 4);
-    // Icône sifflet bottom-right
     _drawWhistle(canvas, Offset(size.width - 38, size.height - 180 + t * 6));
-    // Ring pulse bottom-left
+
     final ring = Paint()
       ..color = _kBlue.withValues(alpha: 0.04 - t * 0.02)
       ..style = PaintingStyle.stroke
@@ -255,9 +250,9 @@ class _CoachBgLightPainter extends CustomPainter {
   bool shouldRepaint(_CoachBgLightPainter old) => old.t != t;
 }
 
-// ─────────────────────────────────────────────
-// TOP BAR COACH LIGHT (AVEC BOUTON ÉVALUATIONS IA)
-// ─────────────────────────────────────────────
+// ════════════════════════════════════════════════════════════
+// TOP BAR COACH LIGHT
+// ════════════════════════════════════════════════════════════
 class _CoachTopBar extends ConsumerWidget {
   final int coachId;
   final String? username;
@@ -352,13 +347,11 @@ class _CoachTopBar extends ConsumerWidget {
                     color: _kText,
                     fontSize: 16,
                     fontWeight: FontWeight.w800,
-                    letterSpacing: -0.3,
                   ),
                 ),
               ],
             ),
           ),
-          // ✅ NOUVEAU : Bouton Évaluations IA (stats de précision)
           IconButton(
             icon: const Icon(Icons.analytics_rounded, color: _kTextSub),
             onPressed: () {
@@ -446,9 +439,9 @@ class _TopChip extends StatelessWidget {
   );
 }
 
-// ─────────────────────────────────────────────
+// ════════════════════════════════════════════════════════════
 // MEMBERS TAB
-// ─────────────────────────────────────────────
+// ════════════════════════════════════════════════════════════
 class _MembersTab extends ConsumerWidget {
   final int coachId;
   const _MembersTab({required this.coachId});
@@ -459,7 +452,8 @@ class _MembersTab extends ConsumerWidget {
     final predictionsAsync = ref.watch(allMembersPredictionsProvider);
 
     return membersAsync.when(
-      loading: () => const LoadingIndicator(),
+      loading: () =>
+          const Center(child: CircularProgressIndicator(color: _kGreen)),
       error: (e, _) => Center(
         child: Text('Erreur: $e', style: const TextStyle(color: _kRed)),
       ),
@@ -691,9 +685,9 @@ class _SummaryBar extends StatelessWidget {
   );
 }
 
-// ─────────────────────────────────────────────
+// ════════════════════════════════════════════════════════════
 // MEMBER CARD LIGHT
-// ─────────────────────────────────────────────
+// ════════════════════════════════════════════════════════════
 class _MemberCard extends StatelessWidget {
   final Map<String, dynamic> member;
   final Map<String, dynamic>? prediction;
@@ -974,9 +968,9 @@ class _OverloadChip extends StatelessWidget {
   }
 }
 
-// ─────────────────────────────────────────────
+// ════════════════════════════════════════════════════════════
 // BOTTOM NAV COACH LIGHT
-// ─────────────────────────────────────────────
+// ════════════════════════════════════════════════════════════
 class _CoachBottomNav extends StatelessWidget {
   final int currentIndex, unreadAdmin;
   final ValueChanged<int> onTap;

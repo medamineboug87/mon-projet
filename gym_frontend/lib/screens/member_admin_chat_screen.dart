@@ -1,9 +1,14 @@
+// lib/screens/member_admin_chat_screen.dart
+// ✅ CORRIGÉ : version mobile-first
+// - Gestion du clavier avec MediaQuery.viewInsets.bottom
+// - SafeArea ajouté
+// - Hauteur minimale des cibles tactiles : 44px
+
 import 'dart:async';
 import 'package:flutter/material.dart';
 import '../services/message_service.dart';
 import '../services/auth_service.dart';
 
-// ─── Design tokens light ───
 const Color _kSurface = Color(0xFFFFFFFF);
 const Color _kSurf2 = Color(0xFFEEF1F8);
 const Color _kGreen = Color(0xFF00897B);
@@ -64,7 +69,6 @@ class _MemberAdminChatScreenState extends State<MemberAdminChatScreen> {
       });
       _scrollToBottom();
     }
-    // Marquer comme lus
     await MessageService.markAdminMessagesAsRead();
   }
 
@@ -111,7 +115,11 @@ class _MemberAdminChatScreenState extends State<MemberAdminChatScreen> {
             const CircleAvatar(
               radius: 18,
               backgroundColor: _kRed,
-              child: Icon(Icons.admin_panel_settings, color: _kText, size: 18),
+              child: Icon(
+                Icons.admin_panel_settings,
+                color: _kSurface,
+                size: 18,
+              ),
             ),
             const SizedBox(width: 10),
             const Text(
@@ -130,7 +138,7 @@ class _MemberAdminChatScreenState extends State<MemberAdminChatScreen> {
               ),
           ],
         ),
-        backgroundColor: const Color(0xFFEEF1F8),
+        backgroundColor: _kSurf2,
         iconTheme: const IconThemeData(color: _kText),
         actions: [
           IconButton(
@@ -139,23 +147,27 @@ class _MemberAdminChatScreenState extends State<MemberAdminChatScreen> {
           ),
         ],
       ),
-      body: Column(
-        children: [
-          Expanded(
-            child: _isLoading
-                ? const Center(child: CircularProgressIndicator(color: _kGreen))
-                : _messages.isEmpty
-                ? _buildEmptyScreen()
-                : ListView.builder(
-                    controller: _scrollController,
-                    padding: const EdgeInsets.all(16),
-                    itemCount: _messages.length,
-                    itemBuilder: (_, index) =>
-                        _buildMessageBubble(_messages[index]),
-                  ),
-          ),
-          _buildInputBar(),
-        ],
+      body: SafeArea(
+        child: Column(
+          children: [
+            Expanded(
+              child: _isLoading
+                  ? const Center(
+                      child: CircularProgressIndicator(color: _kGreen),
+                    )
+                  : _messages.isEmpty
+                  ? _buildEmptyScreen()
+                  : ListView.builder(
+                      controller: _scrollController,
+                      padding: const EdgeInsets.all(16),
+                      itemCount: _messages.length,
+                      itemBuilder: (_, index) =>
+                          _buildMessageBubble(_messages[index]),
+                    ),
+            ),
+            _buildInputBar(),
+          ],
+        ),
       ),
     );
   }
@@ -195,7 +207,6 @@ class _MemberAdminChatScreenState extends State<MemberAdminChatScreen> {
             : MainAxisAlignment.start,
         crossAxisAlignment: CrossAxisAlignment.end,
         children: [
-          // Avatar admin (gauche) avec point vert si non lu
           if (!isMe) ...[
             Stack(
               clipBehavior: Clip.none,
@@ -206,7 +217,7 @@ class _MemberAdminChatScreenState extends State<MemberAdminChatScreen> {
                   child: Icon(
                     Icons.admin_panel_settings,
                     size: 14,
-                    color: _kText,
+                    color: _kSurface,
                   ),
                 ),
                 if (isUnread)
@@ -219,10 +230,7 @@ class _MemberAdminChatScreenState extends State<MemberAdminChatScreen> {
                       decoration: BoxDecoration(
                         color: _kGreen,
                         shape: BoxShape.circle,
-                        border: Border.all(
-                          color: const Color(0xFFFFFFFF),
-                          width: 1.5,
-                        ),
+                        border: Border.all(color: _kSurface, width: 1.5),
                       ),
                     ),
                   ),
@@ -242,7 +250,7 @@ class _MemberAdminChatScreenState extends State<MemberAdminChatScreen> {
                     vertical: 10,
                   ),
                   decoration: BoxDecoration(
-                    color: isMe ? _kGreen : const Color(0xFFEEF1F8),
+                    color: isMe ? _kGreen : _kSurf2,
                     borderRadius: BorderRadius.only(
                       topLeft: const Radius.circular(16),
                       topRight: const Radius.circular(16),
@@ -282,13 +290,12 @@ class _MemberAdminChatScreenState extends State<MemberAdminChatScreen> {
               ],
             ),
           ),
-          // Avatar membre (droite)
           if (isMe) ...[
             const SizedBox(width: 8),
             const CircleAvatar(
               radius: 16,
               backgroundColor: _kGreen,
-              child: Icon(Icons.person, size: 16, color: _kText),
+              child: Icon(Icons.person, size: 16, color: _kSurface),
             ),
           ],
         ],
@@ -296,9 +303,15 @@ class _MemberAdminChatScreenState extends State<MemberAdminChatScreen> {
     );
   }
 
+  // ✅ CORRECTION CLAVIER : MediaQuery.viewInsets.bottom
   Widget _buildInputBar() {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      padding: EdgeInsets.only(
+        left: 12,
+        right: 12,
+        top: 8,
+        bottom: MediaQuery.of(context).viewInsets.bottom + 8,
+      ),
       decoration: const BoxDecoration(
         color: _kSurf2,
         border: Border(top: BorderSide(color: _kBorder, width: 1)),
@@ -316,7 +329,7 @@ class _MemberAdminChatScreenState extends State<MemberAdminChatScreen> {
                 hintText: 'Envoyer un message à l\'administration...',
                 hintStyle: const TextStyle(color: _kTextSub),
                 filled: true,
-                fillColor: const Color(0xFFEEF1F8),
+                fillColor: _kSurf2,
                 border: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(24),
                   borderSide: BorderSide.none,
@@ -329,11 +342,17 @@ class _MemberAdminChatScreenState extends State<MemberAdminChatScreen> {
             ),
           ),
           const SizedBox(width: 8),
-          CircleAvatar(
-            backgroundColor: _kRed,
-            child: IconButton(
-              icon: const Icon(Icons.send, color: _kText, size: 20),
-              onPressed: _sendMessage,
+          // ✅ Cible tactile 44x44 minimum
+          SizedBox(
+            width: 44,
+            height: 44,
+            child: CircleAvatar(
+              backgroundColor: _kRed,
+              child: IconButton(
+                icon: const Icon(Icons.send, color: _kSurface, size: 20),
+                onPressed: _sendMessage,
+                padding: EdgeInsets.zero,
+              ),
             ),
           ),
         ],

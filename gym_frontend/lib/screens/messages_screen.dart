@@ -1,10 +1,15 @@
+// lib/screens/messages_screen.dart
+// ✅ CORRIGÉ : version mobile-first
+// - Gestion du clavier avec MediaQuery.viewInsets.bottom
+// - SafeArea ajouté
+// - Hauteur minimale des cibles tactiles : 44px
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../services/message_service.dart';
 import '../services/auth_service.dart';
 import '../providers/message_provider.dart';
 
-// ─── Design tokens light ───
 const Color _kBg = Color(0xFFF4F6FA);
 const Color _kSurface = Color(0xFFFFFFFF);
 const Color _kSurf2 = Color(0xFFEEF1F8);
@@ -16,9 +21,7 @@ const Color _kText = Color(0xFF1A2340);
 const Color _kTextSub = Color(0xFF6B7A99);
 const Color _kBorder = Color(0xFFDDE2EE);
 
-// Bulle envoyée (moi) : vert
 const Color _kMeBubble = Color(0xFF00897B);
-// Bulle reçue : gris clair
 const Color _kThemBubble = Color(0xFFEEF1F8);
 
 class MessagesScreen extends ConsumerStatefulWidget {
@@ -125,7 +128,9 @@ class _MessagesScreenState extends ConsumerState<MessagesScreen> {
                 color: widget.isCoach ? _kBlueL : _kGreenL,
                 borderRadius: BorderRadius.circular(10),
                 border: Border.all(
-                  color: (widget.isCoach ? _kBlue : _kGreen).withValues(alpha: 0.3),
+                  color: (widget.isCoach ? _kBlue : _kGreen).withValues(
+                    alpha: 0.3,
+                  ),
                 ),
               ),
               child: Icon(
@@ -158,31 +163,33 @@ class _MessagesScreenState extends ConsumerState<MessagesScreen> {
           ),
         ],
       ),
-      body: Column(
-        children: [
-          Expanded(
-            child: messagesAsync.when(
-              loading: () => const Center(
-                child: CircularProgressIndicator(color: _kGreen),
+      body: SafeArea(
+        child: Column(
+          children: [
+            Expanded(
+              child: messagesAsync.when(
+                loading: () => const Center(
+                  child: CircularProgressIndicator(color: _kGreen),
+                ),
+                error: (e, _) => _buildError(e),
+                data: (messages) => messages.isEmpty
+                    ? _buildEmpty()
+                    : ListView.builder(
+                        controller: _scrollController,
+                        padding: const EdgeInsets.all(16),
+                        itemCount: messages.length,
+                        itemBuilder: (ctx, i) {
+                          final msg = messages[i];
+                          final isMe =
+                              msg['sender']['username'] == _currentUsername;
+                          return _buildBubble(msg, isMe);
+                        },
+                      ),
               ),
-              error: (e, _) => _buildError(e),
-              data: (messages) => messages.isEmpty
-                  ? _buildEmpty()
-                  : ListView.builder(
-                      controller: _scrollController,
-                      padding: const EdgeInsets.all(16),
-                      itemCount: messages.length,
-                      itemBuilder: (ctx, i) {
-                        final msg = messages[i];
-                        final isMe =
-                            msg['sender']['username'] == _currentUsername;
-                        return _buildBubble(msg, isMe);
-                      },
-                    ),
             ),
-          ),
-          _buildInputBar(),
-        ],
+            _buildInputBar(),
+          ],
+        ),
       ),
     );
   }
@@ -205,14 +212,14 @@ class _MessagesScreenState extends ConsumerState<MessagesScreen> {
               clipBehavior: Clip.none,
               children: [
                 Container(
-                  width: 30,
-                  height: 30,
+                  width: 32,
+                  height: 32,
                   decoration: BoxDecoration(
                     color: widget.isCoach ? _kBlueL : _kGreenL,
                     borderRadius: BorderRadius.circular(9),
                     border: Border.all(
-                      color: (widget.isCoach ? _kBlue : _kGreen).withValues(alpha: 
-                        0.25,
+                      color: (widget.isCoach ? _kBlue : _kGreen).withValues(
+                        alpha: 0.25,
                       ),
                     ),
                   ),
@@ -308,8 +315,8 @@ class _MessagesScreenState extends ConsumerState<MessagesScreen> {
           if (isMe) ...[
             const SizedBox(width: 8),
             Container(
-              width: 30,
-              height: 30,
+              width: 32,
+              height: 32,
               decoration: BoxDecoration(
                 color: _kGreenL,
                 borderRadius: BorderRadius.circular(9),
@@ -323,9 +330,15 @@ class _MessagesScreenState extends ConsumerState<MessagesScreen> {
     );
   }
 
+  // ✅ CORRECTION CLAVIER : MediaQuery.viewInsets.bottom
   Widget _buildInputBar() {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      padding: EdgeInsets.only(
+        left: 12,
+        right: 12,
+        top: 10,
+        bottom: MediaQuery.of(context).viewInsets.bottom + 10,
+      ),
       decoration: BoxDecoration(
         color: _kSurface,
         border: const Border(top: BorderSide(color: _kBorder, width: 0.5)),
@@ -363,6 +376,7 @@ class _MessagesScreenState extends ConsumerState<MessagesScreen> {
             ),
           ),
           const SizedBox(width: 8),
+          // ✅ Cible tactile 44x44 minimum
           GestureDetector(
             onTap: _sendMessage,
             child: Container(
@@ -443,7 +457,10 @@ class _MessagesScreenState extends ConsumerState<MessagesScreen> {
         const SizedBox(height: 16),
         ElevatedButton(
           onPressed: () => ref.invalidate(messagesProvider(widget.memberId)),
-          style: ElevatedButton.styleFrom(backgroundColor: _kGreen),
+          style: ElevatedButton.styleFrom(
+            backgroundColor: _kGreen,
+            minimumSize: const Size(100, 44),
+          ),
           child: const Text('Réessayer', style: TextStyle(color: Colors.white)),
         ),
       ],

@@ -23,13 +23,6 @@ const Color _kText = Color(0xFF1A2340);
 const Color _kTextSub = Color(0xFF6B7A99);
 const Color _kBorder = Color(0xFFDDE2EE);
 
-// ─────────────────────────────────────────────
-// DESIGN TOKENS
-
-// ─────────────────────────────────────────────
-// MAIN SCREEN
-// ─────────────────────────────────────────────
-
 class AdminSubscriptionsScreen extends StatefulWidget {
   const AdminSubscriptionsScreen({super.key});
 
@@ -218,7 +211,7 @@ class _AdminSubscriptionsScreenState extends State<AdminSubscriptionsScreen>
   }
 
   // ─────────────────────────────────────────────
-  // DIALOGS
+  // DIALOGS (inchangés, déjà OK)
   // ─────────────────────────────────────────────
 
   void _showDiscountDialog(Map<String, dynamic> sub) {
@@ -262,7 +255,6 @@ class _AdminSubscriptionsScreenState extends State<AdminSubscriptionsScreen>
                 mainAxisSize: MainAxisSize.min,
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  // Current price info
                   _InfoRow(
                     'Prix actuel',
                     '${currentPrice.toStringAsFixed(0)} DT',
@@ -274,7 +266,6 @@ class _AdminSubscriptionsScreenState extends State<AdminSubscriptionsScreen>
                     _kTextSub,
                   ),
                   const SizedBox(height: 16),
-                  // Discount type toggle
                   const Text(
                     'Type de réduction',
                     style: TextStyle(color: _kTextSub, fontSize: 12),
@@ -302,7 +293,6 @@ class _AdminSubscriptionsScreenState extends State<AdminSubscriptionsScreen>
                     ],
                   ),
                   const SizedBox(height: 14),
-                  // Value input
                   TextField(
                     controller: valueCtrl,
                     keyboardType: TextInputType.number,
@@ -341,7 +331,6 @@ class _AdminSubscriptionsScreenState extends State<AdminSubscriptionsScreen>
                     ),
                   ),
                   const SizedBox(height: 12),
-                  // Preview
                   if (value > 0)
                     Container(
                       padding: const EdgeInsets.all(12),
@@ -443,7 +432,6 @@ class _AdminSubscriptionsScreenState extends State<AdminSubscriptionsScreen>
                 style: TextStyle(color: _kTextSub, fontSize: 13),
               ),
               const SizedBox(height: 16),
-              // Month selector
               Row(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
@@ -550,7 +538,6 @@ class _AdminSubscriptionsScreenState extends State<AdminSubscriptionsScreen>
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  // Type selector
                   const _SectionLabel('Type d\'abonnement'),
                   const SizedBox(height: 8),
                   Wrap(
@@ -567,7 +554,6 @@ class _AdminSubscriptionsScreenState extends State<AdminSubscriptionsScreen>
                         .toList(),
                   ),
                   const SizedBox(height: 14),
-                  // Status
                   const _SectionLabel('Statut'),
                   const SizedBox(height: 8),
                   Wrap(
@@ -584,7 +570,6 @@ class _AdminSubscriptionsScreenState extends State<AdminSubscriptionsScreen>
                         .toList(),
                   ),
                   const SizedBox(height: 14),
-                  // Price override
                   const _SectionLabel('Prix personnalisé (DT)'),
                   const SizedBox(height: 6),
                   _DialogField(
@@ -606,7 +591,6 @@ class _AdminSubscriptionsScreenState extends State<AdminSubscriptionsScreen>
                     Icons.event_rounded,
                   ),
                   const SizedBox(height: 12),
-                  // Auto-renew toggle
                   Row(
                     children: [
                       const Expanded(
@@ -667,12 +651,10 @@ class _AdminSubscriptionsScreenState extends State<AdminSubscriptionsScreen>
   }
 
   void _showCreateDialog() {
-    // Need to pick a member — show member list first
     _showMemberPickerThenCreate();
   }
 
   void _showMemberPickerThenCreate() async {
-    // Fetch all members
     try {
       final token = await AuthService.getToken();
       final r = await http.get(
@@ -689,7 +671,6 @@ class _AdminSubscriptionsScreenState extends State<AdminSubscriptionsScreen>
       final members = jsonDecode(r.body) as List;
       if (!mounted) return;
 
-      // Show member picker dialog
       int? selectedMemberId;
       String searchMember = '';
 
@@ -1322,7 +1303,6 @@ class _AdminSubscriptionsScreenState extends State<AdminSubscriptionsScreen>
           ),
         ),
         actions: [
-          // Bulk discount button
           TextButton.icon(
             onPressed: _showBulkDiscountDialog,
             icon: const Icon(Icons.discount_rounded, size: 16, color: _kPurple),
@@ -1382,7 +1362,6 @@ class _AdminSubscriptionsScreenState extends State<AdminSubscriptionsScreen>
 
     return Column(
       children: [
-        // Search bar
         Padding(
           padding: const EdgeInsets.fromLTRB(14, 12, 14, 8),
           child: TextField(
@@ -1406,7 +1385,7 @@ class _AdminSubscriptionsScreenState extends State<AdminSubscriptionsScreen>
             ),
           ),
         ),
-        // Status filter
+        // Status filter (horizontal scroll reste OK pour mobile)
         SizedBox(
           height: 34,
           child: ListView.builder(
@@ -1550,7 +1529,6 @@ class _AdminSubscriptionsScreenState extends State<AdminSubscriptionsScreen>
             padding: const EdgeInsets.fromLTRB(14, 12, 14, 10),
             child: Row(
               children: [
-                // Plan icon
                 Container(
                   width: 44,
                   height: 44,
@@ -1608,7 +1586,6 @@ class _AdminSubscriptionsScreenState extends State<AdminSubscriptionsScreen>
                     ],
                   ),
                 ),
-                // Price display
                 Column(
                   crossAxisAlignment: CrossAxisAlignment.end,
                   children: [
@@ -1664,7 +1641,7 @@ class _AdminSubscriptionsScreenState extends State<AdminSubscriptionsScreen>
               ],
             ),
           ),
-          // Action buttons
+          // ✅ CORRECTION : Action buttons avec Wrap (mobile-first)
           Container(
             decoration: const BoxDecoration(
               border: Border(top: BorderSide(color: _kBorder)),
@@ -1684,6 +1661,7 @@ class _AdminSubscriptionsScreenState extends State<AdminSubscriptionsScreen>
     );
   }
 
+  // ✅ CORRECTION MOBILE-FIRST : Remplacement de SingleChildScrollView horizontal par Wrap
   Widget _buildActionRow(
     Map<String, dynamic> sub,
     String status,
@@ -1695,88 +1673,97 @@ class _AdminSubscriptionsScreenState extends State<AdminSubscriptionsScreen>
   ) {
     final id = (sub['id'] as num).toInt();
 
-    return SingleChildScrollView(
-      scrollDirection: Axis.horizontal,
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-      child: Row(
-        children: [
-          // Réduction
-          _QuickBtn(
-            icon: Icons.local_offer_rounded,
-            label: 'Réduction',
-            color: _kOrange,
-            onTap: () => _showDiscountDialog(sub),
-          ),
-          // Reset prix
-          if (hasDiscount)
-            _QuickBtn(
-              icon: Icons.price_change_rounded,
-              label: 'Tarif normal',
-              color: _kTextSub,
-              onTap: () => _resetPrice(id),
-            ),
-          // Prolonger
-          if (status == 'ACTIVE')
-            _QuickBtn(
-              icon: Icons.calendar_today_rounded,
-              label: 'Prolonger',
-              color: _kBlue,
-              onTap: () => _showExtendDialog(sub),
-            ),
-          // Changer type
-          _QuickBtn(
-            icon: Icons.swap_horiz_rounded,
-            label: 'Changer type',
-            color: _kPurple,
-            onTap: () => _showChangeTypeDialog(sub),
-          ),
-          // Modifier
-          _QuickBtn(
-            icon: Icons.edit_rounded,
-            label: 'Modifier',
-            color: _kTextSub,
-            onTap: () => _showEditDialog(sub),
-          ),
-          // Activer
-          if (status == 'PENDING' || status == 'SUSPENDED')
-            _QuickBtn(
-              icon: Icons.play_circle_rounded,
-              label: 'Activer',
-              color: _kGreen,
-              onTap: () => _activate(id),
-            ),
-          // Suspendre
-          if (status == 'ACTIVE')
-            _QuickBtn(
-              icon: Icons.pause_circle_rounded,
-              label: 'Suspendre',
-              color: _kOrange,
-              onTap: () => _suspend(id),
-            ),
-          // Renouveler
-          if (status == 'ACTIVE')
-            _QuickBtn(
-              icon: Icons.autorenew_rounded,
-              label: 'Renouveler',
-              color: _kGreen,
-              onTap: () => _renew(id),
-            ),
-          // Annuler
-          if (status != 'CANCELLED')
-            _QuickBtn(
-              icon: Icons.cancel_rounded,
-              label: 'Annuler',
-              color: Colors.white30,
-              onTap: () => _cancel(id),
-            ),
-          // Supprimer
-          _QuickBtn(
-            icon: Icons.delete_rounded,
-            label: 'Supprimer',
-            color: _kRed,
-            onTap: () => _delete(id),
-          ),
-        ],
+    // Construction dynamique de la liste des actions
+    final List<MapEntry<String, VoidCallback>> actions = [];
+
+    actions.add(MapEntry('Réduction', () => _showDiscountDialog(sub)));
+    if (hasDiscount) {
+      actions.add(MapEntry('Tarif normal', () => _resetPrice(id)));
+    }
+    if (status == 'ACTIVE') {
+      actions.add(MapEntry('Prolonger', () => _showExtendDialog(sub)));
+    }
+    actions.add(MapEntry('Changer type', () => _showChangeTypeDialog(sub)));
+    actions.add(MapEntry('Modifier', () => _showEditDialog(sub)));
+    if (status == 'PENDING' || status == 'SUSPENDED') {
+      actions.add(MapEntry('Activer', () => _activate(id)));
+    }
+    if (status == 'ACTIVE') {
+      actions.add(MapEntry('Suspendre', () => _suspend(id)));
+    }
+    if (status == 'ACTIVE') {
+      actions.add(MapEntry('Renouveler', () => _renew(id)));
+    }
+    if (status != 'CANCELLED') {
+      actions.add(MapEntry('Annuler', () => _cancel(id)));
+    }
+    actions.add(MapEntry('Supprimer', () => _delete(id)));
+
+    // ✅ WRAP : remplacement du scroll horizontal
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+      child: Wrap(
+        spacing: 8,
+        runSpacing: 8,
+        alignment: WrapAlignment.center,
+        children: actions.map((entry) {
+          Color getColor(String action) {
+            switch (action) {
+              case 'Réduction':
+                return _kOrange;
+              case 'Tarif normal':
+                return _kTextSub;
+              case 'Prolonger':
+                return _kBlue;
+              case 'Changer type':
+                return _kPurple;
+              case 'Modifier':
+                return _kTextSub;
+              case 'Activer':
+                return _kGreen;
+              case 'Suspendre':
+                return _kOrange;
+              case 'Renouveler':
+                return _kGreen;
+              case 'Annuler':
+                return Colors.white30;
+              default:
+                return _kRed;
+            }
+          }
+
+          IconData getIcon(String action) {
+            switch (action) {
+              case 'Réduction':
+                return Icons.local_offer_rounded;
+              case 'Tarif normal':
+                return Icons.price_change_rounded;
+              case 'Prolonger':
+                return Icons.calendar_today_rounded;
+              case 'Changer type':
+                return Icons.swap_horiz_rounded;
+              case 'Modifier':
+                return Icons.edit_rounded;
+              case 'Activer':
+                return Icons.play_circle_rounded;
+              case 'Suspendre':
+                return Icons.pause_circle_rounded;
+              case 'Renouveler':
+                return Icons.autorenew_rounded;
+              case 'Annuler':
+                return Icons.cancel_rounded;
+              default:
+                return Icons.delete_rounded;
+            }
+          }
+
+          return _QuickBtnFixed(
+            icon: getIcon(entry.key),
+            label: entry.key,
+            color: getColor(entry.key),
+            onTap: entry.value,
+          );
+        }).toList(),
       ),
     );
   }
@@ -1803,7 +1790,6 @@ class _AdminSubscriptionsScreenState extends State<AdminSubscriptionsScreen>
       child: ListView(
         padding: const EdgeInsets.all(14),
         children: [
-          // Revenue hero
           Container(
             padding: const EdgeInsets.all(20),
             decoration: BoxDecoration(
@@ -1840,7 +1826,6 @@ class _AdminSubscriptionsScreenState extends State<AdminSubscriptionsScreen>
             ),
           ),
           const SizedBox(height: 12),
-          // Status breakdown
           _StatsSection(
             title: 'Répartition par statut',
             child: Column(
@@ -1856,7 +1841,6 @@ class _AdminSubscriptionsScreenState extends State<AdminSubscriptionsScreen>
             ),
           ),
           const SizedBox(height: 10),
-          // Plan distribution
           _StatsSection(
             title: 'Répartition par type',
             child: Column(
@@ -1872,7 +1856,6 @@ class _AdminSubscriptionsScreenState extends State<AdminSubscriptionsScreen>
             ),
           ),
           const SizedBox(height: 10),
-          // Quick action cards
           _StatsSection(
             title: 'Actions rapides globales',
             child: Column(
@@ -1960,6 +1943,52 @@ class _AdminSubscriptionsScreenState extends State<AdminSubscriptionsScreen>
 // REUSABLE WIDGETS
 // ─────────────────────────────────────────────
 
+// ✅ NOUVEAU WIDGET : version fixe pour Wrap (sans scroll horizontal)
+class _QuickBtnFixed extends StatelessWidget {
+  final IconData icon;
+  final String label;
+  final Color color;
+  final VoidCallback onTap;
+
+  const _QuickBtnFixed({
+    required this.icon,
+    required this.label,
+    required this.color,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+        decoration: BoxDecoration(
+          color: color.withOpacity(0.08),
+          borderRadius: BorderRadius.circular(10),
+          border: Border.all(color: color.withOpacity(0.25)),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(icon, size: 14, color: color),
+            const SizedBox(width: 6),
+            Text(
+              label,
+              style: TextStyle(
+                color: color,
+                fontSize: 12,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+// Garder l'ancien _QuickBtn pour compatibilité (inchangé)
 class _QuickBtn extends StatelessWidget {
   final IconData icon;
   final String label;
@@ -2056,7 +2085,7 @@ class _TypeChip extends StatelessWidget {
         duration: const Duration(milliseconds: 150),
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
         decoration: BoxDecoration(
-          color: active ? color.withOpacity(0.15) : const Color(0xFFF4F6FA),
+          color: active ? color.withOpacity(0.15) : _kBg,
           borderRadius: BorderRadius.circular(20),
           border: Border.all(
             color: active ? color.withOpacity(0.4) : _kBorder,
@@ -2213,7 +2242,7 @@ class _DialogField extends StatelessWidget {
         labelStyle: const TextStyle(color: _kTextSub, fontSize: 12),
         prefixIcon: Icon(icon, color: _kGreen, size: 18),
         filled: true,
-        fillColor: const Color(0xFFF4F6FA),
+        fillColor: _kBg,
         contentPadding: const EdgeInsets.symmetric(
           horizontal: 12,
           vertical: 12,
@@ -2242,9 +2271,9 @@ class _StatsSection extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
-        color: const Color(0xFFFFFFFF),
+        color: _kSurface,
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: const Color(0xFFDDE2EE)),
+        border: Border.all(color: _kBorder),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
