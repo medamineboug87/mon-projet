@@ -1,14 +1,15 @@
 """
 app.py — Service IA pour Smart Gym
-Version 4.0 - Corrections de cohérence avec AIService.java
+Version 4.1 - Corrections d'incohérences Flutter/Java/Python
 
-Changements vs v3.5 :
-  - painLevel ajouté dans FatigueInput (envoyé par Java, maintenant documenté)
-  - totalDuration : calculé côté Java ET Python pour robustesse
-  - fitnessLevel / avgSleepHours / stressLevel : documentés comme
-    multiplicateurs post-modèle (ne font PAS partie des FEATURES ML)
-  - source ajouté dans les réponses (MODEL / HEURISTIC)
-  - Scaler absent → réponse structurée cohérente avec le fallback Java
+Changements vs v4.0 :
+  - FIX 4.4 : /predict_injury retourne "risque modéré" comme label valide
+              (Java AIFeedbackService ne valide que correctedInjuryLabel soumis
+               par le coach — la prédiction IA peut retourner "risque modéré")
+  - FIX 3.4 : NON_DISPONIBLE géré proprement côté Java (AIController fallback)
+  - FIX 5.3 : multipliers.yml déjà chargé — Java doit aussi lire ce fichier
+              (voir commentaire SYNC_WARNING)
+  - FIX 3.3 : ACL_Risk_Score — différence train.py vs Java documentée
 """
 
 from fastapi import FastAPI, HTTPException, BackgroundTasks
@@ -29,13 +30,17 @@ from pathlib import Path
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("ai-api")
 
-app = FastAPI(title="Smart Gym AI API", version="4.0")
+app = FastAPI(title="Smart Gym AI API", version="4.1")
 
 RETRAIN_DATA_DIR = Path("retrain_data")
 RETRAIN_DATA_DIR.mkdir(exist_ok=True)
 
 # ══════════════════════════════════════════════════════════════
 # CHARGEMENT DE LA CONFIGURATION PARTAGÉE (multipliers.yml)
+# FIX 5.3 : Ces valeurs sont la SOURCE DE VÉRITÉ.
+#            AIService.java DOIT être mis à jour si ces valeurs changent.
+#            SYNC_WARNING : Java hardcode les mêmes valeurs — toute modification
+#            ici doit être répercutée dans AIService.java manuellement.
 # ══════════════════════════════════════════════════════════════
 
 CONFIG_PATH = Path("config/multipliers.yml")
@@ -53,14 +58,14 @@ DEFAULT_CONFIG = {
         "ATHLETE": 0.9
     },
     "sleep_multiplier": {
-        "poor": 1.3,      # < 6 heures
-        "moderate": 1.15, # 6-7 heures
-        "good": 1.0       # >= 7 heures
+        "poor": 1.3,
+        "moderate": 1.15,
+        "good": 1.0
     },
     "stress_multiplier": {
-        "high": 1.25,     # >= 7/10
-        "moderate": 1.1,  # 5-6/10
-        "low": 1.0        # <= 4/10
+        "high": 1.25,
+        "moderate": 1.1,
+        "low": 1.0
     }
 }
 
@@ -109,21 +114,11 @@ except Exception as e:
 
 # ══════════════════════════════════════════════════════════════
 # FEATURES DES MODÈLES ML
-#
-# ⚠️ IMPORTANT — séparation claire des responsabilités :
-#
-# FATIGUE_FEATURES / INJURY_FEATURES = entrées du modèle scikit-learn
-#   → doivent correspondre exactement à ce qui a été utilisé dans train.py
-#
-# Champs de personnalisation (fitnessLevel, avgSleepHours, stressLevel,
-# painLevel) = multiplicateurs appliqués APRÈS la prédiction du modèle
-#   → ils affinent le score final mais ne font PAS partie du ML
-#   → cohérent avec AIService.java (heuristique et appel Python)
 # ══════════════════════════════════════════════════════════════
 
 FATIGUE_FEATURES = [
     "Duration",
-    "TotalDuration",       # FIX: maintenant toujours calculé (Java + Python)
+    "TotalDuration",
     "BMI",
     "Age",
     "Gender",
@@ -159,7 +154,6 @@ INJURY_FEATURES = [
 # ══════════════════════════════════════════════════════════════
 
 class FatigueInput(BaseModel):
-    # ── Champs du modèle ML (FATIGUE_FEATURES) ──
     age: int
     bmi: float
     gender: int
@@ -171,24 +165,14 @@ class FatigueInput(BaseModel):
     cardioDurationMinutes: Optional[float] = 0.0
     cardioIntensity: Optional[float] = 0.0
     muscleRiskScore: Optional[float] = 1.0
-
-    # FIX: totalDuration optionnel mais maintenant envoyé par Java
-    # Si absent → recalculé ici pour robustesse
     totalDuration: Optional[float] = None
-
-    # ── Champs de personnalisation (multiplicateurs post-modèle) ──
-    # Ces champs ne font PAS partie du modèle ML — ils ajustent le score final
     fitnessLevel: Optional[str] = "BEGINNER"
     avgSleepHours: Optional[float] = 7.0
     stressLevel: Optional[int] = 5
-    # FIX: painLevel documenté — utilisé comme multiplicateur post-modèle
-    # (cohérent avec l'heuristique Java : 1.0 + painLevel/20 si painLevel > 3)
-    painLevel: Optional[int] = Field(0, ge=0, le=10,
-        description="Niveau de douleur 0-10. Multiplicateur post-modèle, pas dans FATIGUE_FEATURES ML.")
+    painLevel: Optional[int] = Field(0, ge=0, le=10)
 
 
 class InjuryInput(BaseModel):
-    # ── Champs du modèle ML (INJURY_FEATURES) ──
     Age: int
     Training_Intensity: float
     Training_Hours_Per_Week: float
@@ -204,8 +188,6 @@ class InjuryInput(BaseModel):
     MuscleRiskScore: Optional[float] = 1.0
     Gender: Optional[int] = 1
     BMI: Optional[float] = 22.5
-
-    # ── Champs de personnalisation (multiplicateurs post-modèle) ──
     fitnessLevel: Optional[str] = "BEGINNER"
     avgSleepHours: Optional[float] = 7.0
     stressLevel: Optional[int] = 5
@@ -223,7 +205,6 @@ class RetrainData(BaseModel):
 # ══════════════════════════════════════════════════════════════
 
 def get_sleep_multiplier(sleep_hours: float) -> float:
-    """Cohérent avec AIService.java predictFatigueHeuristic."""
     if sleep_hours < 6.0:
         return SLEEP_MULTIPLIER["poor"]
     elif sleep_hours < 7.0:
@@ -232,7 +213,6 @@ def get_sleep_multiplier(sleep_hours: float) -> float:
 
 
 def get_stress_multiplier(stress_level: int) -> float:
-    """Cohérent avec AIService.java predictFatigueHeuristic."""
     if stress_level >= 7:
         return STRESS_MULTIPLIER["high"]
     elif stress_level >= 5:
@@ -249,10 +229,6 @@ def get_injury_level_multiplier(level: str) -> float:
 
 
 def get_pain_multiplier(pain_level: int) -> float:
-    """
-    FIX: aligné avec AIService.java predictFatigueHeuristic.
-    Java : painMultiplier = painLevel > 3 ? 1.0 + (painLevel / 20.0) : 1.0
-    """
     if pain_level > 3:
         return 1.0 + (pain_level / 20.0)
     return 1.0
@@ -263,14 +239,11 @@ def get_pain_multiplier(pain_level: int) -> float:
 # ══════════════════════════════════════════════════════════════
 
 def _retrain_models():
-    """Exécute train.py pour réentraîner les modèles avec les nouveaux feedbacks."""
     logger.info("🔄 Démarrage du réentraînement réel...")
     try:
         result = subprocess.run(
             [sys.executable, "train.py", "--retrain", "--use-feedback"],
-            capture_output=True,
-            text=True,
-            timeout=300
+            capture_output=True, text=True, timeout=300
         )
         if result.returncode == 0:
             logger.info("✅ Réentraînement terminé avec succès")
@@ -298,7 +271,7 @@ def _retrain_models():
 def health():
     return {
         "status": "ok",
-        "version": "4.0",
+        "version": "4.1",
         "models": {
             "fatigue": fatigue_model is not None,
             "injury":  injury_model  is not None,
@@ -313,6 +286,10 @@ def health():
             "injury_level":  INJURY_LEVEL_MULTIPLIER,
             "sleep":         SLEEP_MULTIPLIER,
             "stress":        STRESS_MULTIPLIER,
+        },
+        "known_issues": {
+            "ACL_Risk_Score": "Calcul différent entre train.py (basé sur injury_occurred du dataset) et AIService.java (basé sur painLevel séances) — impact mineur sur le modèle",
+            "multipliers_sync": "SYNC_WARNING : Java hardcode les mêmes valeurs que multipliers.yml — toute modification du yml doit être répercutée dans AIService.java",
         },
         "post_model_adjustments": [
             "fitnessLevel → level_multiplier",
@@ -335,8 +312,6 @@ def predict_fatigue(data: FatigueInput):
     )
 
     try:
-        # FIX: totalDuration robuste — utilise la valeur Java si présente,
-        # sinon recalcule localement (fallback de sécurité)
         total_duration = (
             data.totalDuration
             if data.totalDuration is not None
@@ -360,16 +335,15 @@ def predict_fatigue(data: FatigueInput):
 
         features = features[FATIGUE_FEATURES]
 
-        prediction     = fatigue_model.predict(features)
-        proba          = fatigue_model.predict_proba(features)
+        prediction      = fatigue_model.predict(features)
+        proba           = fatigue_model.predict_proba(features)
         base_confidence = float(proba.max())
         base_fatigue_score = float(proba[0][1]) if proba.shape[1] > 1 else base_confidence
 
-        # ── Multiplicateurs post-modèle (cohérents avec AIService.java) ──
         level_multi  = get_fatigue_level_multiplier(data.fitnessLevel)
         sleep_multi  = get_sleep_multiplier(data.avgSleepHours)
         stress_multi = get_stress_multiplier(data.stressLevel)
-        pain_multi   = get_pain_multiplier(data.painLevel)   # FIX: aligné Java
+        pain_multi   = get_pain_multiplier(data.painLevel)
 
         adjusted_score = (
             base_fatigue_score
@@ -382,12 +356,13 @@ def predict_fatigue(data: FatigueInput):
         is_fatigued    = adjusted_score > 0.6
 
         return {
-            "fatigue":       1 if is_fatigued else 0,
-            "label":         "fatigué" if is_fatigued else "normal",
-            "confidence":    round(base_confidence, 2),
+            "fatigue":        1 if is_fatigued else 0,
+            "label":          "fatigué" if is_fatigued else "normal",
+            "confidence":     round(base_confidence, 2),
             "proba_fatigued": round(adjusted_score, 2),
-            "fatigueScore":  round(adjusted_score * 10, 1),   # échelle 0-10 pour cohérence avec heuristique
-            "source":        "MODEL",
+            "probaFatigued":  round(adjusted_score, 2),   # double clé camelCase pour Java
+            "fatigueScore":   round(adjusted_score * 10, 1),
+            "source":         "MODEL",
             "totalDurationUsed": round(total_duration, 1),
             "multipliers_applied": {
                 "level":       level_multi,
@@ -413,6 +388,8 @@ def predict_injury(data: InjuryInput):
         f"| stress={data.stressLevel}/10 | ACL={data.ACL_Risk_Score}"
     )
 
+    # FIX 3.4 : si scaler absent, retourner NON_DISPONIBLE structuré
+    # Java AIController détecte cette valeur et active le fallback heuristique
     if INJURY_SCALER_MISSING:
         logger.warning("⚠️ Scaler absent — prédiction blessure désactivée")
         return {
@@ -422,11 +399,12 @@ def predict_injury(data: InjuryInput):
             "riskLevel":     "NON_DISPONIBLE",
             "confidence":    0.0,
             "proba_injured": 0.0,
+            "injuryRisk":    0.0,
             "source":        "MODEL_UNAVAILABLE",
             "scaler_missing": True,
             "warning": (
                 "⚠️ Scaler absent. Relancez train.py pour calibrer le modèle. "
-                "Le fallback heuristique Java est utilisé."
+                "Le fallback heuristique Java est utilisé automatiquement."
             ),
         }
 
@@ -459,7 +437,6 @@ def predict_injury(data: InjuryInput):
         base_confidence = float(proba.max())
         base_risk_score = float(proba[0][1]) if proba.shape[1] > 1 else base_confidence
 
-        # ── Multiplicateurs post-modèle ──
         level_multi  = get_injury_level_multiplier(data.fitnessLevel)
         sleep_multi  = get_sleep_multiplier(data.avgSleepHours)
         stress_multi = get_stress_multiplier(data.stressLevel)
@@ -467,14 +444,16 @@ def predict_injury(data: InjuryInput):
         adjusted_score = base_risk_score * level_multi * sleep_multi * stress_multi
         adjusted_score = min(1.0, max(0.0, adjusted_score))
 
-        # 3 niveaux cohérents avec l'heuristique Java
+        # FIX 4.4 : 3 niveaux incluant "risque modéré" — cohérent avec l'heuristique Java
+        # Note : AIFeedbackService.java valide uniquement les CORRECTIONS du coach
+        #        ("risque faible" ou "risque élevé") — pas la prédiction IA ici.
         if adjusted_score > 0.7:
             risk_level   = "ÉLEVÉ"
             label        = "risque élevé"
             injury_risk  = 1
         elif adjusted_score > 0.4:
             risk_level   = "MODÉRÉ"
-            label        = "risque modéré"
+            label        = "risque modéré"    # FIX 4.4 : "risque modéré" est valide ici
             injury_risk  = 0
         else:
             risk_level   = "FAIBLE"
@@ -485,10 +464,10 @@ def predict_injury(data: InjuryInput):
             "injury_risk":   injury_risk,
             "label":         label,
             "risk_level":    risk_level,
-            "riskLevel":     risk_level,       # double clé pour compatibilité Java
+            "riskLevel":     risk_level,       # double clé pour Java
             "confidence":    round(base_confidence, 2),
             "proba_injured": round(adjusted_score, 2),
-            "injuryRisk":    round(adjusted_score, 2),  # double clé pour compatibilité Java
+            "injuryRisk":    round(adjusted_score, 2),  # double clé pour Flutter
             "source":        "MODEL",
             "multipliers_applied": {
                 "level":       level_multi,
@@ -513,7 +492,6 @@ def retrain(data: RetrainData, background_tasks: BackgroundTasks):
             "message": f"Données insuffisantes : {data.totalSamples}/{data.minimumRequired} requis.",
         }
 
-    # Vérification que les données sont bien numériques (pas de texte ML)
     text_fields_detected = []
     for sample in data.data:
         for key, val in sample.items():
@@ -538,7 +516,7 @@ def retrain(data: RetrainData, background_tasks: BackgroundTasks):
 
         return {
             "success":         True,
-            "modelVersion":    f"v4.0.{timestamp}",
+            "modelVersion":    f"v4.1.{timestamp}",
             "samplesReceived": data.totalSamples,
             "savedFile":       str(filename),
             "fatigueAccuracy": "N/A (calcul après réentraînement)",
@@ -555,7 +533,7 @@ def retrain(data: RetrainData, background_tasks: BackgroundTasks):
 def get_stats():
     retrain_files = list(RETRAIN_DATA_DIR.glob("retrain_data_*.json"))
     return {
-        "version":        "4.0",
+        "version":        "4.1",
         "models_loaded":  {"fatigue": fatigue_model is not None, "injury": injury_model is not None},
         "scaler_available": not INJURY_SCALER_MISSING,
         "retrain_data_files": len(retrain_files),

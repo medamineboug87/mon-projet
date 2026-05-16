@@ -5,6 +5,7 @@ import com.example.project_backend.Entity.Subscription;
 import com.example.project_backend.Repository.MemberRepository;
 import com.example.project_backend.Repository.SubscriptionPlanRepository;
 import com.example.project_backend.Repository.SubscriptionRepository;
+import com.example.project_backend.Service.MemberService;
 import com.example.project_backend.Service.PaymentService;
 import com.example.project_backend.Service.SubscriptionService;
 import org.springframework.http.ResponseEntity;
@@ -25,24 +26,26 @@ public class PaymentController {
     private final SubscriptionRepository subscriptionRepository;
     private final MemberRepository memberRepository;
     private final SubscriptionPlanRepository planRepository;
-
+    // FIX 2.1 : injection de MemberService pour cascade complète lors du rejet
+    private final MemberService memberService;
 
     public PaymentController(
             PaymentService paymentService,
             SubscriptionService subscriptionService,
             SubscriptionRepository subscriptionRepository,
             MemberRepository memberRepository,
-            SubscriptionPlanRepository planRepository) {
+            SubscriptionPlanRepository planRepository,
+            MemberService memberService) {
         this.paymentService = paymentService;
         this.subscriptionService = subscriptionService;
         this.subscriptionRepository = subscriptionRepository;
         this.memberRepository = memberRepository;
-        this.planRepository=planRepository;
+        this.planRepository = planRepository;
+        this.memberService = memberService;
     }
 
     // ──────────────────────────────────────────────────
     // 💳 Paiement simulé (carte bancaire — ONLINE)
-    // Crée un abonnement ACTIVE directement
     // ──────────────────────────────────────────────────
     @PostMapping("/simulate")
     public ResponseEntity<?> simulatePayment(@RequestBody Map<String, Object> request) {
@@ -51,7 +54,6 @@ public class PaymentController {
             String subscriptionType = (String) request.get("subscriptionType");
             double amount = Double.parseDouble(request.get("amount").toString());
 
-            // Invalider tout abonnement PENDING existant avant d'en créer un nouveau ACTIVE
             List<Subscription> pending = subscriptionRepository
                     .findByMemberIdAndStatus(memberId, "PENDING");
             for (Subscription s : pending) {
@@ -79,7 +81,6 @@ public class PaymentController {
 
     // ──────────────────────────────────────────────────
     // 💵 Paiement CASH — crée un abonnement PENDING
-    // Évite les doublons : annule le PENDING existant avant d'en créer un nouveau
     // ──────────────────────────────────────────────────
     @PostMapping("/cash")
     public ResponseEntity<?> cashPayment(@RequestBody Map<String, Object> request) {
@@ -87,7 +88,6 @@ public class PaymentController {
             Long memberId = Long.valueOf(request.get("memberId").toString());
             String subscriptionType = (String) request.get("subscriptionType");
 
-            // FIX : annuler tout PENDING existant pour éviter les doublons
             List<Subscription> existingPending = subscriptionRepository
                     .findByMemberIdAndStatus(memberId, "PENDING");
             for (Subscription s : existingPending) {
@@ -115,7 +115,6 @@ public class PaymentController {
 
     // ──────────────────────────────────────────────────
     // ✅ Confirmer un paiement cash → activer l'abonnement
-    // Appelé par l'admin depuis AdminDashboard
     // ──────────────────────────────────────────────────
     @PostMapping("/cash/confirm/{subscriptionId}")
     @Transactional
@@ -146,8 +145,10 @@ public class PaymentController {
     }
 
     // ──────────────────────────────────────────────────
-    // ❌ Rejeter un paiement cash → supprime le membre
-    // Appelé par l'admin depuis AdminDashboard
+    // ❌ Rejeter un paiement cash → supprime le membre en cascade
+    // FIX 2.1 : la suppression complète (cascade) est désormais faite ici
+    //            via MemberService.deleteMember() — le Flutter n'a plus à
+    //            appeler AdminService.deleteMember() séparément.
     // ──────────────────────────────────────────────────
     @DeleteMapping("/cash/reject/{subscriptionId}")
     @Transactional
@@ -166,13 +167,14 @@ public class PaymentController {
                 return ResponseEntity.badRequest().body(Map.of("error", "Membre introuvable"));
             }
 
-            // La suppression cascade du membre est gérée par AdminController.deleteMember
-            // On délègue simplement en retournant l'ID pour que le front appelle deleteMember
-            subscriptionRepository.deleteById(subscriptionId);
+            Long memberId = member.getId();
+
+            // FIX 2.1 : suppression en cascade via MemberService (User + sessions + abonnements)
+            memberService.deleteMember(memberId);
 
             return ResponseEntity.ok(Map.of(
-                    "message", "Abonnement rejeté",
-                    "memberId", member.getId()
+                    "message",  "Demande rejetée et membre supprimé",
+                    "memberId", memberId
             ));
 
         } catch (Exception e) {
@@ -182,7 +184,6 @@ public class PaymentController {
 
     // ──────────────────────────────────────────────────
     // 📋 Récupérer tous les abonnements PENDING
-    // Appelé par l'admin pour la liste des paiements en attente
     // ──────────────────────────────────────────────────
     @GetMapping("/cash/pending")
     public ResponseEntity<?> getPendingPayments() {
@@ -197,7 +198,6 @@ public class PaymentController {
     // ── Helper ──
     private void setSubscriptionPriceAndDuration(Subscription sub, String type) {
         if (type == null) return;
-        // 1. Chercher dans les plans custom BDD
         planRepository.findByName(type.toUpperCase()).ifPresentOrElse(
                 plan -> {
                     sub.setPrice(plan.getPrice());

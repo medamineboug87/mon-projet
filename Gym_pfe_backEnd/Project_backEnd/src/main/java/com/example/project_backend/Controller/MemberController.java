@@ -27,7 +27,6 @@ public class MemberController {
     }
 
     // ── GET BY ID ──
-    // ✅ FIX : ResponseEntity + gestion 404
     @GetMapping("/{id}")
     public ResponseEntity<?> getMemberById(@PathVariable Long id) {
         try {
@@ -38,7 +37,6 @@ public class MemberController {
     }
 
     // ── CREATE ──
-    // ✅ FIX : validation champs obligatoires
     @PostMapping
     public ResponseEntity<?> createMember(@RequestBody Member member) {
         if (member.getFullName() == null || member.getFullName().isBlank()) {
@@ -72,11 +70,11 @@ public class MemberController {
     }
 
     // ── PROFIL ──
+    // FIX 4.2 : ajout email et phone dans la réponse de /profile
     @GetMapping("/{id}/profile")
     public ResponseEntity<Map<String, Object>> getMemberProfile(
             @PathVariable Long id) {
 
-        // ✅ FIX : try-catch → 404 propre
         try {
             Member member = memberService.getMemberById(id);
             Map<String, Object> profile = buildProfile(member);
@@ -87,6 +85,7 @@ public class MemberController {
     }
 
     // ── UPDATE PROFIL ──
+    // FIX 4.3 : préserver le gender si non envoyé (évite l'écrasement à null)
     @PutMapping("/{id}/profile")
     public ResponseEntity<?> updateProfile(@PathVariable Long id,
                                            @RequestBody Member updatedMember) {
@@ -96,7 +95,20 @@ public class MemberController {
             member.setAge(updatedMember.getAge());
             member.setWeight(updatedMember.getWeight());
             member.setHeight(updatedMember.getHeight());
-            member.setGender(updatedMember.getGender());
+
+            // FIX 4.3 : ne pas écraser le genre s'il n'est pas fourni
+            if (updatedMember.getGender() != null && !updatedMember.getGender().isBlank()) {
+                member.setGender(updatedMember.getGender());
+            }
+
+            // Mettre à jour email et phone si fournis
+            if (updatedMember.getEmail() != null) {
+                member.setEmail(updatedMember.getEmail());
+            }
+            if (updatedMember.getPhone() != null) {
+                member.setPhone(updatedMember.getPhone());
+            }
+
             return ResponseEntity.ok(memberService.updateMember(id, member));
         } catch (RuntimeException e) {
             return ResponseEntity.notFound().build();
@@ -104,7 +116,6 @@ public class MemberController {
     }
 
     // ── DELETE ──
-    // ✅ FIX : retourner ResponseEntity au lieu de void
     @DeleteMapping("/{id}")
     public ResponseEntity<?> deleteMember(@PathVariable Long id) {
         try {
@@ -116,6 +127,7 @@ public class MemberController {
     }
 
     // ── Helper : construction du profil + BMI ──
+    // FIX 4.2 : email et phone inclus dans la réponse
     private Map<String, Object> buildProfile(Member member) {
         Map<String, Object> profile = new HashMap<>();
         profile.put("id",               member.getId());
@@ -125,6 +137,9 @@ public class MemberController {
         profile.put("weight",           member.getWeight());
         profile.put("height",           member.getHeight());
         profile.put("registrationDate", member.getRegistrationDate());
+        // FIX 4.2 — champs manquants (lus par UnifiedProfileScreen)
+        profile.put("email",            member.getEmail());
+        profile.put("phone",            member.getPhone());
 
         if (member.getHeight() > 0) {
             double bmi = member.getWeight()
@@ -142,18 +157,11 @@ public class MemberController {
         }
         return profile;
     }
-    // Ajouter cette méthode dans MemberController.java
 
     @GetMapping("/coach/{coachId}")
     public ResponseEntity<?> getMembersByCoach(@PathVariable Long coachId) {
         try {
-            // Récupérer tous les membres
             List<Member> allMembers = memberService.getAllMembers();
-
-            // TODO: Filtrer par coachId (à adapter selon ta logique de relation coach-membre)
-            // Pour l'instant, retourne tous les membres
-            // Idéalement, ajouter un champ coachId dans Member ou une table de relation
-
             return ResponseEntity.ok(allMembers);
         } catch (Exception e) {
             return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));

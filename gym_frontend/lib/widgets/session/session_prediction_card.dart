@@ -20,25 +20,43 @@ class SessionPredictionCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final fatigue = prediction['fatigue'];
-    final injury = prediction['injury'];
-    final overload = prediction['overload'];
+    final fatigue = prediction['fatigue'] as Map<String, dynamic>?;
+    final injury = prediction['injury'] as Map<String, dynamic>?;
+    final overload = prediction['overload'] as Map<String, dynamic>?;
+
     final fatigueLbl = fatigue?['label'] ?? 'N/A';
+
+    // FIX 4.4 / 1.1 — "risque modéré" est maintenant un label valide
     final injuryLbl = injury?['label'] ?? 'N/A';
-    // Support snake_case (risk_level) et camelCase (riskLevel)
+
+    // FIX 1.1 — lire riskLevel (camelCase Java) avec fallback snake_case Python
     final riskLevel =
         overload?['riskLevel'] ?? overload?['risk_level'] ?? 'NORMAL';
+
+    // FIX 3.4 — riskLevel "NON_DISPONIBLE" → afficher NORMAL par défaut
+    final displayRiskLevel = riskLevel == 'NON_DISPONIBLE'
+        ? 'NORMAL'
+        : riskLevel;
+
     final warnings = (overload?['warnings'] as List?)?.cast<String>() ?? [];
     final recs = (overload?['recommendations'] as List?)?.cast<String>() ?? [];
+
+    // FIX 1.4 — exerciseCount et effectiveWeightUsed maintenant garantis par Java
     final exerciseCount = fatigue?['exerciseCount'] ?? 0;
     final muscleRiskSource = fatigue?['muscleRiskSource'] ?? '';
-    final effectiveWeight = fatigue?['effectiveWeightUsed'] ?? 0;
+    final effectiveWeight =
+        (fatigue?['effectiveWeightUsed'] as num?)?.toDouble() ?? 0.0;
 
-    // ✅ Utiliser remainingRestDays (dynamique) au lieu de recommendedRestDays
-    final remainingRestDays = prediction['remainingRestDays'] ?? 0;
-    final restMessage = prediction['restMessage'] ?? '';
+    // FIX 1.3 — remainingRestDays maintenant retourné par /api/ai/predict
+    final remainingRestDays =
+        (prediction['remainingRestDays'] as num?)?.toInt() ?? 0;
+    final restMessage = prediction['restMessage'] as String? ?? '';
 
-    final riskColor = _getRiskColor(riskLevel);
+    final riskColor = _getRiskColor(displayRiskLevel);
+
+    // FIX 3.4 — avertissement si modèle blessure indisponible
+    final injuryUnavailable =
+        (injury?['riskLevel'] ?? injury?['risk_level']) == 'NON_DISPONIBLE';
 
     return Container(
       padding: const EdgeInsets.all(16),
@@ -55,23 +73,27 @@ class SessionPredictionCard extends StatelessWidget {
             _buildEffectiveWeightInfo(effectiveWeight, muscleRiskSource),
           const SizedBox(height: 14),
           _buildFatigueInjuryRow(fatigueLbl, injuryLbl, fatigue, injury),
+
+          // FIX 3.4 — bannière si modèle blessure indisponible (scaler manquant)
+          if (injuryUnavailable) ...[
+            const SizedBox(height: 8),
+            _buildUnavailableBanner(),
+          ],
+
           const SizedBox(height: 10),
           ProgressionCard(overload: overload ?? {}),
 
-          // ✅ UN SEUL affichage du repos, avec remainingRestDays
+          // FIX 1.3 — remainingRestDays calculé côté Java maintenant
           if (remainingRestDays > 0)
             RestRecommendationCard(days: remainingRestDays),
 
-          // ✅ Afficher le message personnalisé si la récupération est terminée
           if (remainingRestDays == 0 && restMessage.isNotEmpty)
             _buildRecoveryCompleteCard(restMessage),
 
           const SizedBox(height: 10),
-          _buildOverloadCard(riskLevel, riskColor, overload),
+          _buildOverloadCard(displayRiskLevel, riskColor, overload),
           if (warnings.isNotEmpty) _buildWarningsList(warnings),
           if (recs.isNotEmpty) _buildRecommendationsList(recs),
-
-          // ❌ SUPPRIMÉ : plus de doublon
         ],
       ),
     );
@@ -144,7 +166,8 @@ class SessionPredictionCard extends StatelessWidget {
             borderRadius: BorderRadius.circular(8),
           ),
           child: Text(
-            'Charge effective analysée : ${weight}kg${source == 'EXERCICES_RÉELS' ? ' (données réelles)' : ''}',
+            'Charge effective analysée : ${weight}kg'
+            '${source == 'EXERCICES_RÉELS' ? ' (données réelles)' : ''}',
             style: const TextStyle(
               color: _kGreenDark,
               fontSize: 10,
@@ -162,6 +185,9 @@ class SessionPredictionCard extends StatelessWidget {
     dynamic fatigue,
     dynamic injury,
   ) {
+    // FIX 1.2 — lire confidence depuis injury (présente dans les deux sources)
+    final injuryConf = (injury?['confidence'] as num?)?.toDouble() ?? 0.0;
+
     return Row(
       children: [
         Expanded(
@@ -179,12 +205,38 @@ class SessionPredictionCard extends StatelessWidget {
             icon: Icons.healing_rounded,
             label: 'Blessure',
             value: injuryLbl,
-            confidence: (injury?['confidence'] as num?)?.toDouble() ?? 0,
+            confidence: injuryConf,
             isWarning: injuryLbl.toLowerCase().contains('élevé'),
             isModerate: injuryLbl.toLowerCase().contains('modéré'),
+            // FIX 3.4 — désactiver la barre si modèle indisponible
+            isUnavailable: injuryLbl == 'non disponible',
           ),
         ),
       ],
+    );
+  }
+
+  // FIX 3.4 — Bannière quand le scaler blessure est absent
+  Widget _buildUnavailableBanner() {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
+      decoration: BoxDecoration(
+        color: _kOrange.withValues(alpha: 0.08),
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: _kOrange.withValues(alpha: 0.3)),
+      ),
+      child: const Row(
+        children: [
+          Icon(Icons.warning_amber_rounded, color: _kOrange, size: 14),
+          SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              'Modèle blessure non calibré — analyse heuristique utilisée.',
+              style: TextStyle(color: _kOrange, fontSize: 11),
+            ),
+          ),
+        ],
+      ),
     );
   }
 
@@ -302,7 +354,6 @@ class SessionPredictionCard extends StatelessWidget {
     );
   }
 
-  // ✅ Nouvelle méthode pour la récupération terminée
   Widget _buildRecoveryCompleteCard(String message) {
     return Container(
       margin: const EdgeInsets.only(top: 8),
@@ -357,12 +408,16 @@ class SessionPredictionCard extends StatelessWidget {
   }
 }
 
+// ════════════════════════════════════════════════════════════
+// _PredCard — FIX 3.4 : isUnavailable pour état scaler absent
+// ════════════════════════════════════════════════════════════
 class _PredCard extends StatelessWidget {
   final IconData icon;
   final String label, value;
   final double confidence;
   final bool isWarning;
   final bool isModerate;
+  final bool isUnavailable;
 
   const _PredCard({
     required this.icon,
@@ -371,13 +426,16 @@ class _PredCard extends StatelessWidget {
     required this.confidence,
     required this.isWarning,
     this.isModerate = false,
+    this.isUnavailable = false,
   });
 
   @override
   Widget build(BuildContext context) {
-    // Gestion des 3 niveaux de couleur
+    // FIX 3.4 : couleur grise si modèle indisponible
     Color color;
-    if (isWarning) {
+    if (isUnavailable) {
+      color = _kTextSub;
+    } else if (isWarning) {
       color = _kRed;
     } else if (isModerate) {
       color = _kOrange;
@@ -407,7 +465,7 @@ class _PredCard extends StatelessWidget {
           ),
           const SizedBox(height: 6),
           Text(
-            value,
+            isUnavailable ? 'N/A' : value,
             style: TextStyle(
               color: color,
               fontSize: 13,
@@ -415,20 +473,32 @@ class _PredCard extends StatelessWidget {
             ),
           ),
           const SizedBox(height: 4),
-          ClipRRect(
-            borderRadius: BorderRadius.circular(3),
-            child: LinearProgressIndicator(
-              value: confidence,
-              backgroundColor: _kBorder,
-              valueColor: AlwaysStoppedAnimation(color),
-              minHeight: 4,
+          if (!isUnavailable) ...[
+            ClipRRect(
+              borderRadius: BorderRadius.circular(3),
+              child: LinearProgressIndicator(
+                value: confidence,
+                backgroundColor: _kBorder,
+                valueColor: AlwaysStoppedAnimation(color),
+                minHeight: 4,
+              ),
             ),
-          ),
-          const SizedBox(height: 2),
-          Text(
-            '${(confidence * 100).toStringAsFixed(0)}% confiance',
-            style: TextStyle(color: color.withValues(alpha: 0.6), fontSize: 9),
-          ),
+            const SizedBox(height: 2),
+            Text(
+              '${(confidence * 100).toStringAsFixed(0)}% confiance',
+              style: TextStyle(
+                color: color.withValues(alpha: 0.6),
+                fontSize: 9,
+              ),
+            ),
+          ] else
+            Text(
+              'Modèle en cours de calibrage',
+              style: TextStyle(
+                color: color.withValues(alpha: 0.7),
+                fontSize: 9,
+              ),
+            ),
         ],
       ),
     );

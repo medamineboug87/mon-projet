@@ -110,6 +110,8 @@ public class AIController {
 
     // ════════════════════════════════════════════════════════════════
     // GET — Prédiction complète (fatigue + blessure + surcharge + profil)
+    // FIX : ajout de remainingRestDays, restMessage, exerciseCount,
+    //        effectiveWeightUsed, muscleRiskSource dans la réponse
     // ════════════════════════════════════════════════════════════════
 
     @GetMapping("/predict/{memberId}/{sessionId}")
@@ -120,8 +122,8 @@ public class AIController {
         log.info("🎯 Prédiction COMPLÈTE — memberId={}, sessionId={}", memberId, sessionId);
 
         try {
-            Member member                        = memberService.getMemberById(memberId);
-            TrainingSession lastSession          = trainingSessionService.getById(sessionId);
+            Member member                          = memberService.getMemberById(memberId);
+            TrainingSession lastSession            = trainingSessionService.getById(sessionId);
             List<TrainingSession> previousSessions = trainingSessionService.getSessionsLastWeek(memberId);
 
             Map<String, Object> result = new HashMap<>();
@@ -130,12 +132,39 @@ public class AIController {
             Map<String, Object> fatigue = aiService.predictFatigueWithAI(member, previousSessions);
             Map<String, Object> injury  = aiService.predictInjuryWithAI(member, previousSessions);
 
-            // Compatibilité des clés snake_case / camelCase
+            // FIX 1.1 — Compatibilité snake_case / camelCase pour risk_level / riskLevel
             if (injury.containsKey("risk_level") && !injury.containsKey("riskLevel")) {
                 injury.put("riskLevel", injury.get("risk_level"));
             }
+            // FIX 1.2 — Garantir proba_fatigued ET probaFatigued (double clé)
             if (fatigue.containsKey("proba_fatigued") && !fatigue.containsKey("probaFatigued")) {
                 fatigue.put("probaFatigued", fatigue.get("proba_fatigued"));
+            }
+
+            // FIX 1.4 — Garantir exerciseCount, effectiveWeightUsed, muscleRiskSource
+            // dans la map fatigue (présents dans heuristique, absents si modèle Python)
+            fatigue.putIfAbsent("exerciseCount",       0);
+            fatigue.putIfAbsent("effectiveWeightUsed", 0.0);
+            fatigue.putIfAbsent("muscleRiskSource",    "UNKNOWN");
+
+            // FIX 1.2 — Garantir injuryRisk ET proba_injured dans injury
+            if (injury.containsKey("proba_injured") && !injury.containsKey("injuryRisk")) {
+                injury.put("injuryRisk", injury.get("proba_injured"));
+            }
+            if (injury.containsKey("injuryRisk") && !injury.containsKey("proba_injured")) {
+                injury.put("proba_injured", injury.get("injuryRisk"));
+            }
+
+            // FIX 3.4 — Gérer "NON_DISPONIBLE" (scaler absent)
+            String riskLevelRaw = (String) injury.getOrDefault("riskLevel",
+                    injury.getOrDefault("risk_level", "FAIBLE"));
+            if ("NON_DISPONIBLE".equals(riskLevelRaw)) {
+                // Fallback vers heuristique Java
+                Map<String, Object> injuryFallback = aiService.predictInjuryHeuristic(member, previousSessions);
+                injuryFallback.forEach(injury::putIfAbsent);
+                injury.put("riskLevel", injuryFallback.get("riskLevel"));
+                injury.put("risk_level", injuryFallback.get("riskLevel"));
+                log.warn("⚠️ Scaler absent — fallback heuristique blessure pour memberId={}", memberId);
             }
 
             result.put("fatigue",          fatigue);
@@ -153,8 +182,19 @@ public class AIController {
             result.put("daysSinceLastSession", daysSinceLastSession);
             result.put("lastSessionDate",      lastSessionDate.toString());
 
+            // FIX 1.3 — Calculer remainingRestDays et restMessage
+            // Ces clés sont lues par session_prediction_card.dart mais n'existaient pas
+            Optional<MemberProfile> profileOptForRest = memberProfileService.getProfile(memberId);
+            int recommendedRest = aiService.getRecommendedRestDays(
+                    profileOptForRest.orElse(null), lastSession);
+            int remainingRestDays = (int) Math.max(0, recommendedRest - daysSinceLastSession);
+            String restMessage = remainingRestDays == 0
+                    ? "✅ Récupération terminée — vous pouvez vous entraîner !"
+                    : "";
+            result.put("remainingRestDays", remainingRestDays);
+            result.put("restMessage",       restMessage);
+
             // ── Lien vers l'analyse musculaire détaillée ──
-            // Le repos par muscle est maintenant géré par GET /api/ai/recovery/{memberId}
             result.put("recoveryNote",
                     "Consultez /api/ai/recovery/" + memberId +
                             " pour l'analyse de récupération musculaire détaillée.");
@@ -176,10 +216,10 @@ public class AIController {
                 result.put("medicalAlerts",              buildMedicalAlerts(profile));
 
                 result.put("profileRiskMultipliers", Map.of(
-                        "goal",      goalMult,
+                        "goal",        goalMult,
                         "chronicPain", chronicMult,
-                        "recovery",  recoveryMult,
-                        "combined",  Math.round(goalMult * chronicMult * recoveryMult * 100.0) / 100.0
+                        "recovery",    recoveryMult,
+                        "combined",    Math.round(goalMult * chronicMult * recoveryMult * 100.0) / 100.0
                 ));
 
                 result.put("levelConsistency",
@@ -194,8 +234,8 @@ public class AIController {
                         "Profil IA non renseigné — complétez votre profil pour des recommandations personnalisées");
             }
 
-            log.info("✅ Prédiction complète retournée — {} séances analysées",
-                    previousSessions.size());
+            log.info("✅ Prédiction complète retournée — {} séances analysées, remainingRestDays={}",
+                    previousSessions.size(), remainingRestDays);
             return ResponseEntity.ok(result);
 
         } catch (RuntimeException e) {
@@ -209,8 +249,7 @@ public class AIController {
     }
 
     // ════════════════════════════════════════════════════════════════
-    // GET — Récupération musculaire détaillée (NOUVEAU)
-    // Remplace l'ancien système de "X jours de repos globaux"
+    // GET — Récupération musculaire détaillée
     // ════════════════════════════════════════════════════════════════
 
     @GetMapping("/recovery/{memberId}")
@@ -238,7 +277,7 @@ public class AIController {
         return ResponseEntity.ok(Map.of(
                 "status",  "available",
                 "service", "AI Controller + MuscleRecovery + MemberProfile",
-                "version", "4.0",
+                "version", "4.1",
                 "endpoints", List.of(
                         "/api/ai/fatigue/{memberId}/{sessionId}",
                         "/api/ai/injury/{memberId}/{sessionId}",
@@ -361,9 +400,9 @@ public class AIController {
                 ? profile.getSelfDeclaredLevel().name() : "BEGINNER";
         boolean isConsistent = declaredLevel.equals(aiEstimatedLevel);
 
-        consistency.put("declaredLevel",     declaredLevel);
-        consistency.put("aiEstimatedLevel",  aiEstimatedLevel);
-        consistency.put("isConsistent",      isConsistent);
+        consistency.put("declaredLevel",    declaredLevel);
+        consistency.put("aiEstimatedLevel", aiEstimatedLevel);
+        consistency.put("isConsistent",     isConsistent);
 
         if (!isConsistent) {
             if (isHigherThan(declaredLevel, aiEstimatedLevel)) {

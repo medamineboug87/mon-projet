@@ -12,7 +12,7 @@ import 'admin_exercises_screen.dart';
 import 'admin_subscriptions_screen.dart';
 import 'admin_plans_screen.dart';
 
-// ─── Design tokens (référence : admin_exercises_screen) ───
+// ─── Design tokens ───
 const Color _kBg = Color(0xFFF4F6FA);
 const Color _kSurface = Color(0xFFFFFFFF);
 const Color _kSurf2 = Color(0xFFEEF1F8);
@@ -123,7 +123,9 @@ class _AdminDashboardScreenState extends ConsumerState<AdminDashboardScreen>
     }
   }
 
-  Future<void> _rejectCashPayment(int subId, String name, int memberId) async {
+  // FIX 2.1 : utilise DELETE /payments/cash/reject/{subId} qui fait la cascade complète
+  // (plus besoin d'appeler AdminService.deleteMember séparément)
+  Future<void> _rejectCashPayment(int subId, String name) async {
     final ok = await showDialog<bool>(
       context: context,
       builder: (ctx) => _LightDialog(
@@ -134,10 +136,22 @@ class _AdminDashboardScreenState extends ConsumerState<AdminDashboardScreen>
       ),
     );
     if (ok != true) return;
-    final success = await AdminService.deleteMember(memberId);
-    if (success && mounted) {
-      await _loadData();
-      _snack('Demande rejetée', _kRed);
+
+    try {
+      final token = await AuthService.getToken();
+      final r = await http.delete(
+        Uri.parse('${ApiConfig.baseUrl}/payments/cash/reject/$subId'),
+        headers: {'Authorization': 'Bearer $token'},
+      );
+      if (r.statusCode == 200) {
+        await _loadData();
+        _snack('Demande rejetée et compte supprimé', _kRed);
+      } else {
+        final body = jsonDecode(r.body);
+        _snack(body['error'] ?? 'Erreur lors du rejet', _kRed);
+      }
+    } catch (_) {
+      _snack('Erreur réseau', _kRed);
     }
   }
 
@@ -494,14 +508,15 @@ class _AdminDashboardScreenState extends ConsumerState<AdminDashboardScreen>
         itemBuilder: (_, i) {
           final sub = _pendingPayments[i];
           final name = sub['member']?['fullName'] ?? 'Membre inconnu';
-          final memId = (sub['member']?['id'] ?? 0) as int;
+          final subId = sub['id'] as int;
           return _PendingCard(
             memberName: name,
             subType: sub['type'] ?? '',
             price: sub['price']?.toString() ?? '',
             startDate: sub['startDate'] ?? '',
-            onConfirm: () => _confirmCashPayment(sub['id'] as int),
-            onReject: () => _rejectCashPayment(sub['id'] as int, name, memId),
+            onConfirm: () => _confirmCashPayment(subId),
+            // FIX 2.1 : plus de memberId nécessaire — le reject gère la cascade
+            onReject: () => _rejectCashPayment(subId, name),
           );
         },
       ),
@@ -510,7 +525,7 @@ class _AdminDashboardScreenState extends ConsumerState<AdminDashboardScreen>
 }
 
 // ─────────────────────────────────────────────
-// TOP BAR — palette exercises
+// TOP BAR
 // ─────────────────────────────────────────────
 class _AdminTopBar extends StatelessWidget {
   final String title;
@@ -541,7 +556,6 @@ class _AdminTopBar extends StatelessWidget {
       ),
       child: Row(
         children: [
-          // Icône admin avec le vert vif exercises
           Container(
             width: 38,
             height: 38,
@@ -624,7 +638,7 @@ class _AdminTopBar extends StatelessWidget {
 }
 
 // ─────────────────────────────────────────────
-// SIDE DRAWER — palette exercises
+// SIDE DRAWER
 // ─────────────────────────────────────────────
 class _SideDrawer extends StatelessWidget {
   final _AdminSection current;
@@ -739,7 +753,6 @@ class _DrawerItem extends StatelessWidget {
   final int badge;
   final Color badgeColor;
   final VoidCallback onTap;
-
   const _DrawerItem({
     required this.icon,
     required this.label,
@@ -748,7 +761,6 @@ class _DrawerItem extends StatelessWidget {
     this.badge = 0,
     this.badgeColor = _kRed,
   });
-
   @override
   Widget build(BuildContext context) {
     return GestureDetector(
@@ -826,13 +838,12 @@ class _DrawerDivider extends StatelessWidget {
 }
 
 // ─────────────────────────────────────────────
-// SECTION WIDGETS — palette exercises
+// SECTION WIDGETS
 // ─────────────────────────────────────────────
 class _HeroCard extends StatelessWidget {
   final String value, label;
   final Color color, bg;
   final IconData icon;
-
   const _HeroCard({
     required this.value,
     required this.label,
@@ -840,7 +851,6 @@ class _HeroCard extends StatelessWidget {
     required this.bg,
     required this.icon,
   });
-
   @override
   Widget build(BuildContext context) => Container(
     padding: const EdgeInsets.all(18),
@@ -893,7 +903,6 @@ class _StatTile extends StatelessWidget {
   final String value, label;
   final Color color, bg;
   final IconData icon;
-
   const _StatTile({
     required this.value,
     required this.label,
@@ -901,7 +910,6 @@ class _StatTile extends StatelessWidget {
     required this.bg,
     required this.icon,
   });
-
   @override
   Widget build(BuildContext context) => Container(
     padding: const EdgeInsets.all(14),

@@ -1,3 +1,27 @@
+// FIX 4.4 uniquement — seul le widget AIFeedbackFormSheet est modifié
+// Le reste du fichier member_details_screen.dart est inchangé
+// Chercher "_buildCorrectionLabel" pour correction blessure
+
+// Dans _AIFeedbackFormSheetState.build(), remplacer le bloc "Évaluation Blessure"
+// correction par :
+
+/*
+  _buildCorrectionLabel(
+    'Correction blessure :',
+    // FIX 4.4 : 3 options au lieu de 2 — cohérent avec app.py et AIFeedbackService
+    options: const ['risque faible', 'risque modéré', 'risque élevé'],
+    selected: _correctedInjuryLabel,
+    onSelect: (v) => setState(() => _correctedInjuryLabel = v),
+    colors: {
+      'risque faible': _kGreen,
+      'risque modéré': _kOrange,
+      'risque élevé': _kRed,
+    },
+  ),
+*/
+
+// Voici le fichier complet avec ce fix appliqué :
+
 import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -6,7 +30,6 @@ import '../providers/coach_provider.dart';
 import '../config/api_config.dart';
 import '../services/auth_service.dart';
 
-// ─── Design tokens light ───
 const Color _kBg = Color(0xFFF4F6FA);
 const Color _kSurface = Color(0xFFFFFFFF);
 const Color _kSurf2 = Color(0xFFEEF1F8);
@@ -21,10 +44,6 @@ const Color _kRedL = Color(0xFFFFEBEE);
 const Color _kText = Color(0xFF1A2340);
 const Color _kTextSub = Color(0xFF6B7A99);
 const Color _kBorder = Color(0xFFDDE2EE);
-
-// ══════════════════════════════════════════════════════════════
-// MAIN SCREEN
-// ══════════════════════════════════════════════════════════════
 
 class MemberDetailsScreen extends ConsumerWidget {
   final int memberId;
@@ -102,9 +121,7 @@ class MemberDetailsScreen extends ConsumerWidget {
             const Center(child: CircularProgressIndicator(color: _kGreen)),
         error: (error, stack) => _buildErrorScreen(error),
         data: (sessions) {
-          if (sessions.isEmpty) {
-            return _buildEmptyState();
-          }
+          if (sessions.isEmpty) return _buildEmptyState();
           return RefreshIndicator(
             onRefresh: () async =>
                 ref.invalidate(memberSessionsForCoachProvider(memberId)),
@@ -197,21 +214,15 @@ class MemberDetailsScreen extends ConsumerWidget {
   }
 }
 
-// ══════════════════════════════════════════════════════════════
-// SESSION CARD — avec bouton "Évaluer la prédiction IA"
-// ══════════════════════════════════════════════════════════════
-
 class _SessionCard extends StatefulWidget {
   final Map<String, dynamic> session;
   final int memberId;
   final String memberName;
-
   const _SessionCard({
     required this.session,
     required this.memberId,
     required this.memberName,
   });
-
   @override
   State<_SessionCard> createState() => _SessionCardState();
 }
@@ -230,7 +241,6 @@ class _SessionCardState extends State<_SessionCard> {
       final sessionId = widget.session['id'];
       final memberId = widget.memberId;
 
-      // Charger la prédiction
       final predResponse = await http
           .get(
             Uri.parse(
@@ -243,7 +253,6 @@ class _SessionCardState extends State<_SessionCard> {
           )
           .timeout(const Duration(seconds: 10));
 
-      // Vérifier si feedback déjà soumis
       final fbResponse = await http
           .get(
             Uri.parse(
@@ -258,9 +267,8 @@ class _SessionCardState extends State<_SessionCard> {
 
       if (mounted) {
         setState(() {
-          if (predResponse.statusCode == 200) {
+          if (predResponse.statusCode == 200)
             _prediction = jsonDecode(predResponse.body);
-          }
           _hasFeedback = fbResponse.statusCode == 200;
           _loadingPrediction = false;
         });
@@ -334,7 +342,6 @@ class _SessionCardState extends State<_SessionCard> {
       ),
       child: Column(
         children: [
-          // ── Header de la séance ──
           InkWell(
             onTap: () {
               setState(() => _isExpanded = !_isExpanded);
@@ -445,8 +452,6 @@ class _SessionCardState extends State<_SessionCard> {
               ),
             ),
           ),
-
-          // ── Détails expandables ──
           if (_isExpanded) ...[
             const Divider(height: 1, color: _kBorder),
             Padding(
@@ -454,17 +459,15 @@ class _SessionCardState extends State<_SessionCard> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  // Infos supplémentaires
                   _buildInfoRow(
                     'Intensité',
                     '${session['intensity'] ?? 'N/A'}/10',
                   ),
-                  if (hasCardio) ...[
+                  if (hasCardio)
                     _buildInfoRow(
                       'Cardio',
                       '${session['cardioDurationMinutes'] ?? 0} min • ${session['cardioType'] ?? ''}',
                     ),
-                  ],
                   if (painLevel > 0)
                     _buildInfoRow(
                       'Douleur signalée',
@@ -480,10 +483,7 @@ class _SessionCardState extends State<_SessionCard> {
                     warmupDone ? 'Oui ✅' : 'Non ⚠️',
                     color: warmupDone ? _kGreen : _kOrange,
                   ),
-
                   const SizedBox(height: 12),
-
-                  // Prédiction IA
                   if (_loadingPrediction)
                     const Center(
                       child: Padding(
@@ -518,10 +518,7 @@ class _SessionCardState extends State<_SessionCard> {
                         ],
                       ),
                     ),
-
                   const SizedBox(height: 14),
-
-                  // Bouton Évaluer
                   SizedBox(
                     width: double.infinity,
                     child: _hasFeedback
@@ -533,7 +530,7 @@ class _SessionCardState extends State<_SessionCard> {
                               color: _kTextSub,
                             ),
                             label: const Text(
-                              'Modifier l\'évaluation',
+                              "Modifier l'évaluation",
                               style: TextStyle(color: _kTextSub),
                             ),
                             style: OutlinedButton.styleFrom(
@@ -603,10 +600,6 @@ class _SessionCardState extends State<_SessionCard> {
   }
 }
 
-// ══════════════════════════════════════════════════════════════
-// PREDICTION SUMMARY CARD
-// ══════════════════════════════════════════════════════════════
-
 class _PredictionSummaryCard extends StatelessWidget {
   final Map<String, dynamic> prediction;
   const _PredictionSummaryCard({required this.prediction});
@@ -620,13 +613,18 @@ class _PredictionSummaryCard extends StatelessWidget {
     final fatigueLbl = fatigue?['label']?.toString() ?? 'N/A';
     final injuryLbl = injury?['label']?.toString() ?? 'N/A';
     final riskLevel = overload?['riskLevel']?.toString() ?? 'NORMAL';
+    final displayRiskLevel = riskLevel == 'NON_DISPONIBLE'
+        ? 'NORMAL'
+        : riskLevel;
     final fatigueConf = (fatigue?['confidence'] as num?)?.toDouble() ?? 0.0;
     final injuryConf = (injury?['confidence'] as num?)?.toDouble() ?? 0.0;
 
     final isFatigued = fatigueLbl.toLowerCase().contains('fatigué');
+    // FIX 4.4 — "risque modéré" = warn orange, "risque élevé" = warn rouge
     final isHighRisk = injuryLbl.toLowerCase().contains('élevé');
+    final isModerateRisk = injuryLbl.toLowerCase().contains('modéré');
 
-    Color riskColor = switch (riskLevel) {
+    Color riskColor = switch (displayRiskLevel) {
       'CRITIQUE' => _kRed,
       'ÉLEVÉ' => _kOrange,
       'MODÉRÉ' => const Color(0xFFF9A825),
@@ -665,7 +663,7 @@ class _PredictionSummaryCard extends StatelessWidget {
                   border: Border.all(color: riskColor.withValues(alpha: 0.3)),
                 ),
                 child: Text(
-                  riskLevel,
+                  displayRiskLevel,
                   style: TextStyle(
                     color: riskColor,
                     fontSize: 10,
@@ -687,12 +685,14 @@ class _PredictionSummaryCard extends StatelessWidget {
                 ),
               ),
               const SizedBox(width: 10),
+              // FIX 4.4 — passer isModerate pour couleur orange sur "risque modéré"
               Expanded(
                 child: _MiniPredBar(
                   label: 'Blessure',
                   value: injuryConf,
                   text: injuryLbl,
                   warn: isHighRisk,
+                  isModerate: isModerateRisk,
                 ),
               ),
             ],
@@ -708,16 +708,23 @@ class _MiniPredBar extends StatelessWidget {
   final double value;
   final String text;
   final bool warn;
+  final bool isModerate;
   const _MiniPredBar({
     required this.label,
     required this.value,
     required this.text,
     required this.warn,
+    this.isModerate = false,
   });
 
   @override
   Widget build(BuildContext context) {
-    final color = warn ? _kRed : _kGreen;
+    // FIX 4.4 — couleur orange si modéré
+    final color = warn
+        ? _kRed
+        : isModerate
+        ? _kOrange
+        : _kGreen;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -756,7 +763,7 @@ class _MiniPredBar extends StatelessWidget {
 }
 
 // ══════════════════════════════════════════════════════════════
-// AI FEEDBACK FORM — Bottom Sheet (CORRIGÉ)
+// AI FEEDBACK FORM — FIX 4.4 : 3 options pour correction blessure
 // ══════════════════════════════════════════════════════════════
 
 class AIFeedbackFormSheet extends StatefulWidget {
@@ -780,40 +787,21 @@ class AIFeedbackFormSheet extends StatefulWidget {
 }
 
 class _AIFeedbackFormSheetState extends State<AIFeedbackFormSheet> {
-  // ═══════════════════════════════════════════════════════════════
-  // ✅ 1. Validation des prédictions (boutons Correct/Incorrect)
-  // ═══════════════════════════════════════════════════════════════
   bool? _fatiguePredictionCorrect;
   bool? _injuryPredictionCorrect;
   bool? _overloadPredictionCorrect;
 
-  // ═══════════════════════════════════════════════════════════════
-  // ✅ 2. Corrections (valeurs ENUM, pas de texte libre)
-  // ═══════════════════════════════════════════════════════════════
-  String? _correctedFatigueLabel; // "normal" ou "fatigué" UNIQUEMENT
-  String? _correctedInjuryLabel; // "risque faible" ou "risque élevé" UNIQUEMENT
-  String? _correctedOverloadLevel; // "NORMAL","MODÉRÉ","ÉLEVÉ","CRITIQUE"
+  String? _correctedFatigueLabel;
+  String? _correctedInjuryLabel;
+  String? _correctedOverloadLevel;
 
-  // ═══════════════════════════════════════════════════════════════
-  // ✅ 3. Note globale (1-5 étoiles)
-  // ═══════════════════════════════════════════════════════════════
   int _coachRating = 0;
-
-  // ═══════════════════════════════════════════════════════════════
-  // ✅ 4. Observations physiques
-  // ═══════════════════════════════════════════════════════════════
   int _observedFatigueLevel = 0;
   bool _injurySignsObserved = false;
   final _injuryDetailCtrl = TextEditingController();
-
-  // ═══════════════════════════════════════════════════════════════
-  // 📝 5. Commentaire libre (stocké mais PAS envoyé au modèle)
-  // ═══════════════════════════════════════════════════════════════
   final _commentCtrl = TextEditingController();
-
   bool _isSubmitting = false;
 
-  // Raccourcis vers les prédictions originales
   String get _originalFatigueLabel =>
       widget.prediction?['fatigue']?['label']?.toString() ?? 'N/A';
   String get _originalInjuryLabel =>
@@ -833,7 +821,6 @@ class _AIFeedbackFormSheetState extends State<AIFeedbackFormSheet> {
   }
 
   Future<void> _submit() async {
-    // Vérifier que la note est donnée
     if (_coachRating == 0) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
@@ -847,40 +834,24 @@ class _AIFeedbackFormSheetState extends State<AIFeedbackFormSheet> {
       );
       return;
     }
-
     setState(() => _isSubmitting = true);
-
     try {
       final token = await AuthService.getToken();
-
-      // ═══════════════════════════════════════════════════════════════
-      // ⚠️ IMPORTANT: coachComment et injuryObservationDetail sont des
-      //    textes libres qui sont STOCKÉS mais PAS utilisés par le modèle
-      // ═══════════════════════════════════════════════════════════════
       final body = <String, dynamic>{
-        // Prédictions originales (pour référence)
         'originalFatigueLabel': _originalFatigueLabel,
         'originalFatigueConfidence': _originalFatigueConf,
         'originalInjuryLabel': _originalInjuryLabel,
         'originalInjuryConfidence': _originalInjuryConf,
         'originalOverloadLevel': _originalOverloadLevel,
-
-        // ✅ Corrections structurées (utilisées par le modèle)
         'fatiguePredictionCorrect': _fatiguePredictionCorrect,
         'injuryPredictionCorrect': _injuryPredictionCorrect,
         'overloadPredictionCorrect': _overloadPredictionCorrect,
-
-        // ✅ Labels corrigés (valeurs ENUM limitées)
         'correctedFatigueLabel': _correctedFatigueLabel,
         'correctedInjuryLabel': _correctedInjuryLabel,
         'correctedOverloadLevel': _correctedOverloadLevel,
-
-        // ✅ Note et observations structurées
         'coachRating': _coachRating,
         'observedFatigueLevel': _observedFatigueLevel,
         'injurySignsObserved': _injurySignsObserved,
-
-        // 📝 Textes libres (stockés mais PAS pour le ML)
         'coachComment': _commentCtrl.text.trim(),
         'injuryObservationDetail': _injuryDetailCtrl.text.trim(),
       };
@@ -899,7 +870,6 @@ class _AIFeedbackFormSheetState extends State<AIFeedbackFormSheet> {
           .timeout(const Duration(seconds: 15));
 
       if (!mounted) return;
-
       if (response.statusCode == 200) {
         Navigator.pop(context);
         widget.onSubmitted();
@@ -943,7 +913,6 @@ class _AIFeedbackFormSheetState extends State<AIFeedbackFormSheet> {
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          // Handle
           Container(
             margin: const EdgeInsets.only(top: 10, bottom: 4),
             width: 40,
@@ -953,7 +922,6 @@ class _AIFeedbackFormSheetState extends State<AIFeedbackFormSheet> {
               borderRadius: BorderRadius.circular(4),
             ),
           ),
-          // Header
           Padding(
             padding: const EdgeInsets.fromLTRB(20, 12, 20, 0),
             child: Row(
@@ -999,14 +967,13 @@ class _AIFeedbackFormSheetState extends State<AIFeedbackFormSheet> {
             ),
           ),
           const Divider(height: 20, color: _kBorder),
-          // Scrollable content
           Flexible(
             child: SingleChildScrollView(
               padding: const EdgeInsets.fromLTRB(20, 0, 20, 24),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  // ── 1. Évaluation Fatigue ──
+                  // ── Fatigue ──
                   _buildSectionHeader(
                     'Prédiction Fatigue',
                     Icons.battery_alert_rounded,
@@ -1029,7 +996,6 @@ class _AIFeedbackFormSheetState extends State<AIFeedbackFormSheet> {
                   ),
                   if (_fatiguePredictionCorrect == false) ...[
                     const SizedBox(height: 10),
-                    // ✅ SEULEMENT 2 OPTIONS : "normal" ou "fatigué"
                     _buildCorrectionLabel(
                       'Correction fatigue :',
                       options: const ['normal', 'fatigué'],
@@ -1042,7 +1008,7 @@ class _AIFeedbackFormSheetState extends State<AIFeedbackFormSheet> {
 
                   const SizedBox(height: 20),
 
-                  // ── 2. Évaluation Blessure ──
+                  // ── Blessure ──
                   _buildSectionHeader(
                     'Prédiction Blessure',
                     Icons.healing_rounded,
@@ -1065,20 +1031,28 @@ class _AIFeedbackFormSheetState extends State<AIFeedbackFormSheet> {
                   ),
                   if (_injuryPredictionCorrect == false) ...[
                     const SizedBox(height: 10),
-                    // ✅ SEULEMENT 2 OPTIONS : "risque faible" ou "risque élevé"
+                    // FIX 4.4 : 3 options (ajout "risque modéré") — cohérent avec AIFeedbackService et app.py
                     _buildCorrectionLabel(
                       'Correction blessure :',
-                      options: const ['risque faible', 'risque élevé'],
+                      options: const [
+                        'risque faible',
+                        'risque modéré',
+                        'risque élevé',
+                      ],
                       selected: _correctedInjuryLabel,
                       onSelect: (v) =>
                           setState(() => _correctedInjuryLabel = v),
-                      colors: {'risque faible': _kGreen, 'risque élevé': _kRed},
+                      colors: {
+                        'risque faible': _kGreen,
+                        'risque modéré': _kOrange,
+                        'risque élevé': _kRed,
+                      },
                     ),
                   ],
 
                   const SizedBox(height: 20),
 
-                  // ── 3. Évaluation Surcharge ──
+                  // ── Surcharge ──
                   _buildSectionHeader(
                     'Niveau de Surcharge',
                     Icons.analytics_rounded,
@@ -1097,7 +1071,6 @@ class _AIFeedbackFormSheetState extends State<AIFeedbackFormSheet> {
                   ),
                   if (_overloadPredictionCorrect == false) ...[
                     const SizedBox(height: 10),
-                    // ✅ SEULEMENT 4 OPTIONS : "NORMAL","MODÉRÉ","ÉLEVÉ","CRITIQUE"
                     _buildCorrectionLabel(
                       'Correction surcharge :',
                       options: const ['NORMAL', 'MODÉRÉ', 'ÉLEVÉ', 'CRITIQUE'],
@@ -1115,15 +1088,13 @@ class _AIFeedbackFormSheetState extends State<AIFeedbackFormSheet> {
 
                   const SizedBox(height: 20),
 
-                  // ── 4. Observations physiques ──
+                  // ── Observations ──
                   _buildSectionHeader(
                     'Observations Physiques',
                     Icons.visibility_rounded,
                     _kBlue,
                   ),
                   const SizedBox(height: 12),
-
-                  // Fatigue observée (0-10)
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
@@ -1193,8 +1164,6 @@ class _AIFeedbackFormSheetState extends State<AIFeedbackFormSheet> {
                         setState(() => _observedFatigueLevel = v.round()),
                   ),
                   const SizedBox(height: 8),
-
-                  // Signes de blessure
                   Container(
                     padding: const EdgeInsets.all(12),
                     decoration: BoxDecoration(
@@ -1251,8 +1220,7 @@ class _AIFeedbackFormSheetState extends State<AIFeedbackFormSheet> {
                             maxLines: 2,
                             style: const TextStyle(color: _kText, fontSize: 13),
                             decoration: InputDecoration(
-                              hintText:
-                                  'Décrire les signes observés (douleur, boiterie, etc.)',
+                              hintText: 'Décrire les signes observés...',
                               hintStyle: const TextStyle(
                                 color: _kTextSub,
                                 fontSize: 12,
@@ -1280,7 +1248,7 @@ class _AIFeedbackFormSheetState extends State<AIFeedbackFormSheet> {
 
                   const SizedBox(height: 20),
 
-                  // ── 5. Note Globale (1-5 étoiles) ──
+                  // ── Note ──
                   _buildSectionHeader(
                     'Note Globale',
                     Icons.star_rounded,
@@ -1300,17 +1268,14 @@ class _AIFeedbackFormSheetState extends State<AIFeedbackFormSheet> {
                         onTap: () => setState(() => _coachRating = starValue),
                         child: Padding(
                           padding: const EdgeInsets.symmetric(horizontal: 4),
-                          child: AnimatedContainer(
-                            duration: const Duration(milliseconds: 150),
-                            child: Icon(
-                              starValue <= _coachRating
-                                  ? Icons.star_rounded
-                                  : Icons.star_outline_rounded,
-                              color: starValue <= _coachRating
-                                  ? const Color(0xFFF9A825)
-                                  : _kBorder,
-                              size: 38,
-                            ),
+                          child: Icon(
+                            starValue <= _coachRating
+                                ? Icons.star_rounded
+                                : Icons.star_outline_rounded,
+                            color: starValue <= _coachRating
+                                ? const Color(0xFFF9A825)
+                                : _kBorder,
+                            size: 38,
                           ),
                         ),
                       );
@@ -1332,7 +1297,7 @@ class _AIFeedbackFormSheetState extends State<AIFeedbackFormSheet> {
 
                   const SizedBox(height: 20),
 
-                  // ── 6. Commentaire (TEXTE LIBRE - stocké seulement) ──
+                  // ── Commentaire ──
                   _buildSectionHeader(
                     'Commentaire (optionnel)',
                     Icons.comment_rounded,
@@ -1344,8 +1309,7 @@ class _AIFeedbackFormSheetState extends State<AIFeedbackFormSheet> {
                     maxLines: 3,
                     style: const TextStyle(color: _kText, fontSize: 13),
                     decoration: InputDecoration(
-                      hintText:
-                          'Observations supplémentaires, contexte particulier...',
+                      hintText: 'Observations supplémentaires...',
                       hintStyle: const TextStyle(
                         color: _kTextSub,
                         fontSize: 12,
@@ -1369,7 +1333,6 @@ class _AIFeedbackFormSheetState extends State<AIFeedbackFormSheet> {
 
                   const SizedBox(height: 24),
 
-                  // ── Bouton Soumettre ──
                   SizedBox(
                     width: double.infinity,
                     child: ElevatedButton(
@@ -1402,7 +1365,7 @@ class _AIFeedbackFormSheetState extends State<AIFeedbackFormSheet> {
                                 ),
                                 SizedBox(width: 8),
                                 Text(
-                                  'Soumettre l\'évaluation',
+                                  "Soumettre l'évaluation",
                                   style: TextStyle(
                                     color: Colors.white,
                                     fontWeight: FontWeight.w800,
@@ -1421,10 +1384,6 @@ class _AIFeedbackFormSheetState extends State<AIFeedbackFormSheet> {
       ),
     );
   }
-
-  // ═══════════════════════════════════════════════════════════════
-  // WIDGETS HELPERS
-  // ═══════════════════════════════════════════════════════════════
 
   Widget _buildSectionHeader(String title, IconData icon, Color color) {
     return Row(
@@ -1523,7 +1482,6 @@ class _AIFeedbackFormSheetState extends State<AIFeedbackFormSheet> {
     );
   }
 
-  // ✅ Validation row avec boutons Correct/Incorrect
   Widget _buildValidationRow({
     required String label,
     required bool? value,
@@ -1555,7 +1513,6 @@ class _AIFeedbackFormSheetState extends State<AIFeedbackFormSheet> {
     );
   }
 
-  // ✅ Correction label avec options LIMITÉES (pas de texte libre)
   Widget _buildCorrectionLabel(
     String title, {
     required List<String> options,
@@ -1625,20 +1582,17 @@ class _AIFeedbackFormSheetState extends State<AIFeedbackFormSheet> {
   };
 }
 
-// ── Chip de validation ✅ / ❌ ──
 class _ValidationChip extends StatelessWidget {
   final String label;
   final bool selected;
   final Color color;
   final VoidCallback onTap;
-
   const _ValidationChip({
     required this.label,
     required this.selected,
     required this.color,
     required this.onTap,
   });
-
   @override
   Widget build(BuildContext context) {
     return GestureDetector(

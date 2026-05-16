@@ -129,7 +129,9 @@ class MemberService {
           )
           .timeout(const Duration(seconds: 15));
 
-      AppLogger.d("📡 [DEBUG] createSession response status: ${response.statusCode}");
+      AppLogger.d(
+        "📡 [DEBUG] createSession response status: ${response.statusCode}",
+      );
       AppLogger.d("📡 [DEBUG] createSession response body: ${response.body}");
 
       if (response.statusCode == 200 || response.statusCode == 201) {

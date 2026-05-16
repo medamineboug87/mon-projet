@@ -6,6 +6,7 @@ import com.example.project_backend.Entity.Member;
 import com.example.project_backend.Entity.Role;
 import com.example.project_backend.Entity.Subscription;
 import com.example.project_backend.Entity.User;
+import com.example.project_backend.Repository.CoachRepository;
 import com.example.project_backend.Repository.SubscriptionPlanRepository;
 import com.example.project_backend.Repository.SubscriptionRepository;
 import com.example.project_backend.Repository.UserRepository;
@@ -37,6 +38,7 @@ public class AuthController {
     private final UserRepository userRepository;
     private final SubscriptionRepository subscriptionRepository;
     private final SubscriptionPlanRepository planRepository;
+    private final CoachRepository coachRepository;
 
     public AuthController(UserService userService,
                           JwtService jwtService,
@@ -45,7 +47,8 @@ public class AuthController {
                           SubscriptionService subscriptionService,
                           UserRepository userRepository,
                           SubscriptionRepository subscriptionRepository,
-                          SubscriptionPlanRepository planRepository) {
+                          SubscriptionPlanRepository planRepository,
+                          CoachRepository coachRepository) {
         this.userService = userService;
         this.jwtService = jwtService;
         this.authenticationManager = authenticationManager;
@@ -54,6 +57,8 @@ public class AuthController {
         this.userRepository = userRepository;
         this.subscriptionRepository = subscriptionRepository;
         this.planRepository = planRepository;
+        this.coachRepository = coachRepository;
+
     }
 
     // ── REGISTER SIMPLE ──
@@ -234,12 +239,14 @@ public class AuthController {
     @GetMapping("/coach-username/{coachId}")
     public ResponseEntity<?> getCoachUsernameById(@PathVariable Long coachId) {
         try {
-            User coach = userRepository.findById(coachId)
-                    .orElseThrow(() -> new RuntimeException("Coach non trouvé"));
-            if (coach.getRole() != Role.COACH) {
-                return ResponseEntity.badRequest().body(Map.of("error", "User n'est pas un coach"));
-            }
-            return ResponseEntity.ok(Map.of("username", coach.getUsername()));
+            return coachRepository.findById(coachId)
+                    .map(coach -> {
+                        if (coach.getUser() == null)
+                            return ResponseEntity.badRequest()
+                                    .body(Map.of("error", "Coach sans compte utilisateur"));
+                        return ResponseEntity.ok(Map.of("username", coach.getUser().getUsername()));
+                    })
+                    .orElse(ResponseEntity.notFound().build());
         } catch (Exception e) {
             return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
         }
