@@ -423,8 +423,8 @@ public class AIService {
             if (imbalanceWarnings != null) warnings.addAll(imbalanceWarnings);
         }
 
-        recommendations.add("💡 Consultez /api/ai/recovery/" + member.getId()
-                + " pour l'analyse de récupération musculaire détaillée.");
+        //recommendations.add("💡 Consultez /api/ai/recovery/" + member.getId()
+               // + " pour l'analyse de récupération musculaire détaillée.");
 
         if ("BEGINNER".equals(fitnessLevel)) {
             recommendations.add("🟢 Débutant : privilégiez la technique à la charge.");
