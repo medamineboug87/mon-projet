@@ -3,6 +3,8 @@ package com.example.project_backend.Controller;
 import com.example.project_backend.Entity.Member;
 import com.example.project_backend.Entity.MemberProfile;
 import com.example.project_backend.Entity.TrainingSession;
+import com.example.project_backend.Entity.User;
+import com.example.project_backend.Repository.UserRepository;
 import com.example.project_backend.Service.AIService;
 import com.example.project_backend.Service.MemberProfileService;
 import com.example.project_backend.Service.MemberService;
@@ -10,8 +12,12 @@ import com.example.project_backend.Service.MuscleRecoveryService;
 import com.example.project_backend.Service.TrainingSessionService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.core.Authentication;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.server.ResponseStatusException;
 
 import java.time.LocalDate;
 import java.time.temporal.ChronoUnit;
@@ -32,17 +38,39 @@ public class AIController {
     private final TrainingSessionService trainingSessionService;
     private final MemberProfileService   memberProfileService;
     private final MuscleRecoveryService  muscleRecoveryService;
+    private final UserRepository         userRepository;
 
     public AIController(AIService aiService,
                         MemberService memberService,
                         TrainingSessionService trainingSessionService,
                         MemberProfileService memberProfileService,
-                        MuscleRecoveryService muscleRecoveryService) {
+                        MuscleRecoveryService muscleRecoveryService,
+                        UserRepository userRepository) {
         this.aiService              = aiService;
         this.memberService          = memberService;
         this.trainingSessionService = trainingSessionService;
         this.memberProfileService   = memberProfileService;
         this.muscleRecoveryService  = muscleRecoveryService;
+        this.userRepository         = userRepository;
+    }
+
+    // ════════════════════════════════════════════════════════════════
+    // HELPER D'AUTORISATION CENTRALISÉ
+    // ════════════════════════════════════════════════════════════════
+
+    private void enforceAccess(Long requestedMemberId, Authentication auth) {
+        User user = userRepository.findByUsername(auth.getName())
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Utilisateur non trouvé"));
+
+        boolean isOwner = user.getMember() != null
+                && user.getMember().getId().equals(requestedMemberId);
+        boolean isPrivileged = user.getRole() == com.example.project_backend.Entity.Role.COACH
+                || user.getRole() == com.example.project_backend.Entity.Role.ADMIN;
+
+        if (!isOwner && !isPrivileged) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN,
+                    "Accès refusé aux données du membre " + requestedMemberId);
+        }
     }
 
     // ════════════════════════════════════════════════════════════════
@@ -65,8 +93,9 @@ public class AIController {
     @GetMapping("/fatigue/{memberId}/{sessionId}")
     public ResponseEntity<?> getFatigue(
             @PathVariable Long memberId,
-            @PathVariable Long sessionId) {
-
+            @PathVariable Long sessionId,
+            Authentication auth) {
+        enforceAccess(memberId, auth);
         log.info("🎯 Prédiction FATIGUE — memberId={}, sessionId={}", memberId, sessionId);
         try {
             Member member = memberService.getMemberById(memberId);
@@ -90,8 +119,9 @@ public class AIController {
     @GetMapping("/injury/{memberId}/{sessionId}")
     public ResponseEntity<?> getInjury(
             @PathVariable Long memberId,
-            @PathVariable Long sessionId) {
-
+            @PathVariable Long sessionId,
+            Authentication auth) {
+        enforceAccess(memberId, auth);
         log.info("🎯 Prédiction BLESSURE — memberId={}, sessionId={}", memberId, sessionId);
         try {
             Member member = memberService.getMemberById(memberId);
@@ -110,15 +140,14 @@ public class AIController {
 
     // ════════════════════════════════════════════════════════════════
     // GET — Prédiction complète (fatigue + blessure + surcharge + profil)
-    // FIX : ajout de remainingRestDays, restMessage, exerciseCount,
-    //        effectiveWeightUsed, muscleRiskSource dans la réponse
     // ════════════════════════════════════════════════════════════════
 
     @GetMapping("/predict/{memberId}/{sessionId}")
     public ResponseEntity<?> getFullPrediction(
             @PathVariable Long memberId,
-            @PathVariable Long sessionId) {
-
+            @PathVariable Long sessionId,
+            Authentication auth) {
+        enforceAccess(memberId, auth);
         log.info("🎯 Prédiction COMPLÈTE — memberId={}, sessionId={}", memberId, sessionId);
 
         try {
@@ -142,7 +171,6 @@ public class AIController {
             }
 
             // FIX 1.4 — Garantir exerciseCount, effectiveWeightUsed, muscleRiskSource
-            // dans la map fatigue (présents dans heuristique, absents si modèle Python)
             fatigue.putIfAbsent("exerciseCount",       0);
             fatigue.putIfAbsent("effectiveWeightUsed", 0.0);
             fatigue.putIfAbsent("muscleRiskSource",    "UNKNOWN");
@@ -183,7 +211,6 @@ public class AIController {
             result.put("lastSessionDate",      lastSessionDate.toString());
 
             // FIX 1.3 — Calculer remainingRestDays et restMessage
-            // Ces clés sont lues par session_prediction_card.dart mais n'existaient pas
             Optional<MemberProfile> profileOptForRest = memberProfileService.getProfile(memberId);
             int recommendedRest = aiService.getRecommendedRestDays(
                     profileOptForRest.orElse(null), lastSession);
@@ -194,10 +221,8 @@ public class AIController {
             result.put("remainingRestDays", remainingRestDays);
             result.put("restMessage",       restMessage);
 
-            // ── Lien vers l'analyse musculaire détaillée ──
-            result.put("recoveryNote",
-                    "Consultez /api/ai/recovery/" + memberId +
-                            " pour l'analyse de récupération musculaire détaillée.");
+            // ── Lien vers l'analyse musculaire détaillée (supprimé - fuite d'URL)
+            result.put("recoveryAvailable", true);
 
             // ── Profil IA ──
             Optional<MemberProfile> profileOpt = memberProfileService.getProfile(memberId);
@@ -253,7 +278,10 @@ public class AIController {
     // ════════════════════════════════════════════════════════════════
 
     @GetMapping("/recovery/{memberId}")
-    public ResponseEntity<?> getMuscleRecovery(@PathVariable Long memberId) {
+    public ResponseEntity<?> getMuscleRecovery(
+            @PathVariable Long memberId,
+            Authentication auth) {
+        enforceAccess(memberId, auth);
         log.info("🎯 Analyse RÉCUPÉRATION MUSCULAIRE — memberId={}", memberId);
         try {
             Map<String, Object> result =
@@ -419,4 +447,5 @@ public class AIController {
         List<String> order = List.of("BEGINNER", "INTERMEDIATE", "ADVANCED", "ATHLETE");
         return order.indexOf(l1) > order.indexOf(l2);
     }
+
 }

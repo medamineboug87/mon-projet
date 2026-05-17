@@ -94,6 +94,32 @@ class SessionPredictionCard extends StatelessWidget {
           _buildOverloadCard(displayRiskLevel, riskColor, overload),
           if (warnings.isNotEmpty) _buildWarningsList(warnings),
           if (recs.isNotEmpty) _buildRecommendationsList(recs),
+
+          // ✅ FIX #5 : Bouton navigation interne au lieu d'URL API
+          if (prediction['recoveryAvailable'] == true)
+            Padding(
+              padding: const EdgeInsets.only(top: 12),
+              child: ElevatedButton.icon(
+                onPressed: () {
+                  // Navigation interne vers l'écran de récupération musculaire
+                  Navigator.pushNamed(
+                    context,
+                    '/muscle-recovery',
+                    arguments: {'memberId': prediction['memberId']},
+                  );
+                },
+                icon: const Icon(Icons.fitness_center_rounded, size: 18),
+                label: const Text('Voir la récupération musculaire détaillée'),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: _kGreen,
+                  foregroundColor: Colors.white,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  padding: const EdgeInsets.symmetric(vertical: 12),
+                ),
+              ),
+            ),
         ],
       ),
     );
