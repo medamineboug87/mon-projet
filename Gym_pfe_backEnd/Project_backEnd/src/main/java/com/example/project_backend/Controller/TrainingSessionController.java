@@ -17,22 +17,31 @@ import java.util.Map;
 public class TrainingSessionController {
 
     private final TrainingSessionService sessionService;
-    private final UserRepository userRepository;  // ← AJOUTER CETTE LIGNE
-
+    private final UserRepository userRepository;
 
     public TrainingSessionController(TrainingSessionService sessionService,
                                      UserRepository userRepository) {
         this.sessionService = sessionService;
-        this.userRepository = userRepository;  
-
+        this.userRepository = userRepository;
     }
 
     // ── Créer une séance ──
     @PostMapping("/member/{memberId}")
     public ResponseEntity<?> createSession(
             @PathVariable Long memberId,
-            @RequestBody TrainingSession session) {
+            @RequestBody TrainingSession session,
+            Authentication authentication) {
         try {
+            // ✅ FIX #2 : vérifier que le membre peut créer une séance pour lui-même
+            User currentUser = resolveUser(authentication);
+            boolean isOwner      = currentUser.getMember() != null
+                    && currentUser.getMember().getId().equals(memberId);
+            boolean isAdminOrCoach = isAdminOrCoach(currentUser);
+
+            if (!isOwner && !isAdminOrCoach) {
+                return ResponseEntity.status(403).body(Map.of("error", "Accès refusé"));
+            }
+
             return ResponseEntity.ok(sessionService.createSession(memberId, session));
         } catch (RuntimeException e) {
             return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
@@ -40,28 +49,22 @@ public class TrainingSessionController {
     }
 
     // ── Toutes les séances ──
-    // ✅ FIX : ResponseEntity au lieu de List brute
     @GetMapping
     public ResponseEntity<List<TrainingSession>> getAllSessions() {
         return ResponseEntity.ok(sessionService.getAllSessions());
     }
 
     // ── Séances d'un membre ──
-    // ✅ FIX : ResponseEntity + gestion erreur si membre inexistant
     @GetMapping("/member/{memberId}")
     public ResponseEntity<?> getSessionsByMember(
             @PathVariable Long memberId,
             Authentication authentication) {
         try {
-            String username = authentication.getName();
-            User currentUser = userRepository.findByUsername(username)
-                    .orElseThrow(() -> new RuntimeException("User not found"));
+            User currentUser = resolveUser(authentication);
 
-            // Vérifier que l'utilisateur est le membre lui-même, son coach, ou un admin
-            boolean isOwner = currentUser.getMember() != null
+            boolean isOwner      = currentUser.getMember() != null
                     && currentUser.getMember().getId().equals(memberId);
-            boolean isAdminOrCoach = currentUser.getRole() == Role.ADMIN
-                    || currentUser.getRole() == Role.COACH;
+            boolean isAdminOrCoach = isAdminOrCoach(currentUser);
 
             if (!isOwner && !isAdminOrCoach) {
                 return ResponseEntity.status(403).body(Map.of("error", "Accès refusé"));
@@ -77,8 +80,22 @@ public class TrainingSessionController {
     @PutMapping("/{sessionId}")
     public ResponseEntity<?> updateSession(
             @PathVariable Long sessionId,
-            @RequestBody TrainingSession session) {
+            @RequestBody TrainingSession session,
+            Authentication authentication) {
         try {
+            // ✅ FIX #2 : vérifier que l'utilisateur est propriétaire ou admin/coach
+            User currentUser   = resolveUser(authentication);
+            TrainingSession existing = sessionService.getById(sessionId);
+
+            boolean isOwner      = currentUser.getMember() != null
+                    && existing.getMember() != null
+                    && currentUser.getMember().getId().equals(existing.getMember().getId());
+            boolean isAdminOrCoach = isAdminOrCoach(currentUser);
+
+            if (!isOwner && !isAdminOrCoach) {
+                return ResponseEntity.status(403).body(Map.of("error", "Accès refusé"));
+            }
+
             return ResponseEntity.ok(sessionService.updateSession(sessionId, session));
         } catch (RuntimeException e) {
             return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
@@ -86,14 +103,39 @@ public class TrainingSessionController {
     }
 
     // ── Supprimer une séance ──
-    // ✅ FIX : retourner message au lieu de Void
     @DeleteMapping("/{sessionId}")
-    public ResponseEntity<?> deleteSession(@PathVariable Long sessionId) {
+    public ResponseEntity<?> deleteSession(
+            @PathVariable Long sessionId,
+            Authentication authentication) {
         try {
+            // ✅ FIX #2 : vérifier la propriété avant suppression
+            User currentUser   = resolveUser(authentication);
+            TrainingSession existing = sessionService.getById(sessionId);
+
+            boolean isOwner      = currentUser.getMember() != null
+                    && existing.getMember() != null
+                    && currentUser.getMember().getId().equals(existing.getMember().getId());
+            boolean isAdminOrCoach = isAdminOrCoach(currentUser);
+
+            if (!isOwner && !isAdminOrCoach) {
+                return ResponseEntity.status(403).body(Map.of("error", "Accès refusé"));
+            }
+
             sessionService.deleteSession(sessionId);
             return ResponseEntity.ok(Map.of("message", "Séance supprimée"));
         } catch (RuntimeException e) {
             return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
         }
+    }
+
+    // ── Helpers privés ──
+    private User resolveUser(Authentication authentication) {
+        String username = authentication.getName();
+        return userRepository.findByUsername(username)
+                .orElseThrow(() -> new RuntimeException("User not found"));
+    }
+
+    private boolean isAdminOrCoach(User user) {
+        return user.getRole() == Role.ADMIN || user.getRole() == Role.COACH;
     }
 }

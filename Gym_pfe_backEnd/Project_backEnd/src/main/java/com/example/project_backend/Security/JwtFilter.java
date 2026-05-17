@@ -35,8 +35,16 @@ public class JwtFilter extends OncePerRequestFilter {
 
             String token = authHeader.substring(7);
 
+            // ✅ FIX #1 : Rejeter les tokens expirés avec 401
+            if (jwtService.isTokenExpired(token)) {
+                response.setStatus(HttpServletResponse.SC_UNAUTHORIZED);
+                response.setContentType("application/json");
+                response.getWriter().write("{\"error\":\"Token expiré. Veuillez vous reconnecter.\"}");
+                return;
+            }
+
             String username = jwtService.extractUsername(token);
-            String role = jwtService.extractRole(token);
+            String role     = jwtService.extractRole(token);
 
             UsernamePasswordAuthenticationToken auth =
                     new UsernamePasswordAuthenticationToken(
