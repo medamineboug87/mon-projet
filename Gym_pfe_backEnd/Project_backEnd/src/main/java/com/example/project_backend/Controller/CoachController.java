@@ -7,6 +7,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 
 @RestController
@@ -41,7 +42,7 @@ public class CoachController {
             profile.put("username", coach.getUser().getUsername());
         }
 
-        return ResponseEntity.ok(profile);
+        return ResponseEntity.ok(List.of());
     }
 
     // ── Modifier le profil ──
