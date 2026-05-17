@@ -620,7 +620,6 @@ class _PredictionSummaryCard extends StatelessWidget {
     final injuryConf = (injury?['confidence'] as num?)?.toDouble() ?? 0.0;
 
     final isFatigued = fatigueLbl.toLowerCase().contains('fatigué');
-    // FIX 4.4 — "risque modéré" = warn orange, "risque élevé" = warn rouge
     final isHighRisk = injuryLbl.toLowerCase().contains('élevé');
     final isModerateRisk = injuryLbl.toLowerCase().contains('modéré');
 

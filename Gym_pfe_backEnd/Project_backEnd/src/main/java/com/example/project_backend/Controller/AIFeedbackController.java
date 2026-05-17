@@ -63,24 +63,6 @@ public class AIFeedbackController {
     }
 
     // ═══════════════════════════════════════════════════════════════
-    // POST - Soumettre un feedback sans session (feedback général)
-    // ═══════════════════════════════════════════════════════════════
-
-    @PostMapping("/member/{memberId}/session/{sessionId}")
-    @PreAuthorize("hasAnyRole('COACH', 'ADMIN')")
-    public ResponseEntity<?> submitFeedbackNoSession(
-            @PathVariable Long memberId,
-            @RequestBody Map<String, Object> data) {
-        try {
-            Long coachId = resolveCoachId();
-            AIFeedback saved = feedbackService.saveFeedback(memberId, coachId, null, data);
-            return ResponseEntity.ok(feedbackService.toMap(saved));
-        } catch (Exception e) {
-            return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
-        }
-    }
-
-    // ═══════════════════════════════════════════════════════════════
     // GET - Tous les feedbacks d'un membre
     // ═══════════════════════════════════════════════════════════════
 

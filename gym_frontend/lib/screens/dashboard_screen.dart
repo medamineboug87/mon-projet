@@ -6,13 +6,11 @@ import '../providers/member_provider.dart';
 import '../providers/session_provider.dart';
 import '../providers/prediction_provider.dart';
 import '../providers/subscription_provider.dart';
-import '../services/auth_service.dart';
 import '../widgets/session/session_prediction_card.dart';
 import 'new_session_screen.dart';
 import 'sessions_history_screen.dart';
-import 'login_screen.dart';
 import 'messages_screen.dart';
-import 'unified_profile_screen.dart';
+import '../services/cache_service.dart';
 
 // ─── Design tokens ───
 const Color _kBg = Color(0xFFF4F6FA);
@@ -621,6 +619,7 @@ class DashboardScreen extends ConsumerWidget {
   }
 
   Future<void> _refreshData(WidgetRef ref) async {
+    await CacheService().invalidateMember(memberId);
     ref.invalidate(memberProvider(memberId));
     ref.invalidate(sessionsProvider(memberId));
     ref.invalidate(recentSessionsProvider(memberId));

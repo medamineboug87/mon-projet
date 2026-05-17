@@ -132,6 +132,12 @@ public class AdminController {
     // ── Liste tous les membres (avec userId + username) ──
     @GetMapping("/members")
     public ResponseEntity<List<Map<String, Object>>> getAllMembers() {
+        // Charger tous les users une seule fois
+        Map<Long, User> userByMemberId = userRepository.findAll().stream()
+                .filter(u -> u.getMember() != null)
+                .collect(java.util.stream.Collectors.toMap(
+                        u -> u.getMember().getId(), u -> u, (a, b) -> a));
+
         List<Map<String, Object>> result = memberRepository.findAll().stream()
                 .map(member -> {
                     Map<String, Object> map = new HashMap<>();
@@ -144,17 +150,13 @@ public class AdminController {
                     map.put("weight", member.getWeight());
                     map.put("height", member.getHeight());
                     map.put("registrationDate", member.getRegistrationDate());
-                    userRepository.findAll().stream()
-                            .filter(u -> u.getMember() != null
-                                    && u.getMember().getId().equals(member.getId()))
-                            .findFirst()
-                            .ifPresent(user -> {
-                                map.put("userId", user.getId());
-                                map.put("username", user.getUsername());
-                            });
+                    User user = userByMemberId.get(member.getId());
+                    if (user != null) {
+                        map.put("userId", user.getId());
+                        map.put("username", user.getUsername());
+                    }
                     return map;
-                })
-                .toList();
+                }).toList();
         return ResponseEntity.ok(result);
     }
 

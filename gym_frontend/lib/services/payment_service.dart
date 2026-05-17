@@ -4,13 +4,6 @@ import '../config/api_config.dart';
 import 'auth_service.dart';
 
 class PaymentService {
-  static const Map<String, Map<String, dynamic>> plans = {
-    'BASIC': {'name': 'BASIC', 'price': 60.0, 'duration': '1 mois'},
-    'STANDARD': {'name': 'STANDARD', 'price': 150.0, 'duration': '3 mois'},
-    'PREMIUM': {'name': 'PREMIUM', 'price': 300.0, 'duration': '6 mois'},
-    'ANNUAL': {'name': 'ANNUAL', 'price': 490.0, 'duration': '12 mois'},
-  };
-
   // ✅ Paiement en ligne simulé (Mastercard/Visa/D17)
   static Future<Map<String, dynamic>?> simulateOnlinePayment({
     required int memberId,

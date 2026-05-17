@@ -2,12 +2,17 @@ package com.example.project_backend.Service;
 
 import com.example.project_backend.Entity.AIFeedback;
 import com.example.project_backend.Repository.AIFeedbackRepository;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.web.reactive.function.client.WebClient;
 
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.time.Duration;
 import java.time.LocalDateTime;
 import java.util.*;
@@ -30,6 +35,7 @@ public class AIRetrainService {
 
     private static final int MIN_FEEDBACKS_REQUIRED = 10;
     private static final Duration RETRAIN_TIMEOUT   = Duration.ofMinutes(5);
+    private static final String HISTORY_FILE_PATH = "retrain_history.json";
 
     // Historique en mémoire (une liste circulaire limitée à 20 entrées)
     private final List<Map<String, Object>> retrainHistory = new CopyOnWriteArrayList<>();
@@ -37,6 +43,7 @@ public class AIRetrainService {
     private final AIFeedbackRepository feedbackRepository;
     private final AIFeedbackService    feedbackService;
     private final WebClient            aiWebClient;
+    private final ObjectMapper         objectMapper;
 
     public AIRetrainService(AIFeedbackRepository feedbackRepository,
                             AIFeedbackService feedbackService,
@@ -46,6 +53,37 @@ public class AIRetrainService {
         this.aiWebClient = WebClient.builder()
                 .baseUrl(aiServiceUrl)
                 .build();
+
+        // ✅ Configuration d'ObjectMapper pour supporter Java 8 Time (LocalDateTime)
+        this.objectMapper = new ObjectMapper();
+        this.objectMapper.findAndRegisterModules(); // Enregistre JavaTimeModule automatiquement
+
+        // ✅ Charger l'historique persistant au démarrage
+        loadRetrainHistory();
+    }
+
+    // ─────────────────────────────────────────────
+    // CHARGEMENT DE L'HISTORIQUE PERSISTANT
+    // ─────────────────────────────────────────────
+
+    @SuppressWarnings("unchecked")
+    private void loadRetrainHistory() {
+        try {
+            Path historyFile = Paths.get(HISTORY_FILE_PATH);
+            if (Files.exists(historyFile)) {
+                List<Map<String, Object>> loaded = objectMapper.readValue(
+                        historyFile.toFile(),
+                        List.class
+                );
+                retrainHistory.addAll(loaded);
+                log.info("✅ {} entrées d'historique retrain chargées depuis {}",
+                        loaded.size(), HISTORY_FILE_PATH);
+            } else {
+                log.info("📄 Aucun fichier d'historique existant, démarrage à zéro");
+            }
+        } catch (Exception ex) {
+            log.warn("⚠️ Impossible de charger l'historique retrain: {}", ex.getMessage());
+        }
     }
 
     // ─────────────────────────────────────────────
@@ -73,7 +111,7 @@ public class AIRetrainService {
         if (!ready) {
             status.put("message",
                     "Encore " + (MIN_FEEDBACKS_REQUIRED - count) +
-                    " feedback(s) nécessaire(s) pour lancer le réentraînement.");
+                            " feedback(s) nécessaire(s) pour lancer le réentraînement.");
         } else {
             status.put("message", "Prêt ! " + count +
                     " feedback(s) disponibles pour le réentraînement.");
@@ -95,7 +133,7 @@ public class AIRetrainService {
             result.put("success", false);
             result.put("message",
                     "Insuffisant : " + pending.size() + "/" + MIN_FEEDBACKS_REQUIRED +
-                    " feedbacks disponibles.");
+                            " feedbacks disponibles.");
             return result;
         }
 
@@ -134,7 +172,7 @@ public class AIRetrainService {
                 result.put("injuryAccuracy",  aiResponse.getOrDefault("injuryAccuracy", "N/A"));
                 result.put("message",
                         "Réentraînement terminé ! " + pending.size() +
-                        " feedbacks utilisés.");
+                                " feedbacks utilisés.");
 
                 log.info("✅ Réentraînement réussi avec {} feedbacks", pending.size());
             } else {
@@ -173,7 +211,11 @@ public class AIRetrainService {
         return ts instanceof LocalDateTime ? (LocalDateTime) ts : null;
     }
 
-   /* private void recordRetrainEvent(int feedbackCount, boolean success,
+    // ─────────────────────────────────────────────
+    // ENREGISTREMENT AVEC PERSISTANCE
+    // ─────────────────────────────────────────────
+
+    private void recordRetrainEvent(int feedbackCount, boolean success,
                                     Map<?, ?> aiResponse) {
         Map<String, Object> event = new LinkedHashMap<>();
         event.put("timestamp",      LocalDateTime.now());
@@ -181,9 +223,9 @@ public class AIRetrainService {
         event.put("success",        success);
 
         if (aiResponse != null) {
-            event.put("modelVersion",    aiResponse.getOrDefault("modelVersion",    "N/A"));
-            event.put("fatigueAccuracy", aiResponse.getOrDefault("fatigueAccuracy", "N/A"));
-            event.put("injuryAccuracy",  aiResponse.getOrDefault("injuryAccuracy",  "N/A"));
+            event.put("modelVersion",    aiResponse.get("modelVersion") != null ? aiResponse.get("modelVersion") : "N/A");
+            event.put("fatigueAccuracy", aiResponse.get("fatigueAccuracy") != null ? aiResponse.get("fatigueAccuracy") : "N/A");
+            event.put("injuryAccuracy",  aiResponse.get("injuryAccuracy") != null ? aiResponse.get("injuryAccuracy") : "N/A");
         }
 
         retrainHistory.add(event);
@@ -192,28 +234,24 @@ public class AIRetrainService {
         while (retrainHistory.size() > 20) {
             retrainHistory.remove(0);
         }
-    }*/
-   private void recordRetrainEvent(int feedbackCount, boolean success,
-                                   Map<?, ?> aiResponse) {
-       Map<String, Object> event = new LinkedHashMap<>();
-       event.put("timestamp",      LocalDateTime.now());
-       event.put("feedbacksUsed",  feedbackCount);
-       event.put("success",        success);
 
-       if (aiResponse != null) {
-           // ✅ Correction : utiliser get() au lieu de getOrDefault()
-           event.put("modelVersion",    aiResponse.get("modelVersion") != null ? aiResponse.get("modelVersion") : "N/A");
-           event.put("fatigueAccuracy", aiResponse.get("fatigueAccuracy") != null ? aiResponse.get("fatigueAccuracy") : "N/A");
-           event.put("injuryAccuracy",  aiResponse.get("injuryAccuracy") != null ? aiResponse.get("injuryAccuracy") : "N/A");
-       }
+        // ✅ PERSISTANCE : sauvegarder dans un fichier JSON
+        persistRetrainHistory();
+    }
 
-       retrainHistory.add(event);
+    // ─────────────────────────────────────────────
+    // PERSISTANCE DE L'HISTORIQUE
+    // ─────────────────────────────────────────────
 
-       // Garder seulement les 20 derniers
-       while (retrainHistory.size() > 20) {
-           retrainHistory.remove(0);
-       }
-   }
+    private void persistRetrainHistory() {
+        try {
+            Path historyFile = Paths.get(HISTORY_FILE_PATH);
+            objectMapper.writerWithDefaultPrettyPrinter().writeValue(historyFile.toFile(), retrainHistory);
+            log.debug("💾 Historique retrain sauvegardé dans {}", HISTORY_FILE_PATH);
+        } catch (Exception ex) {
+            log.warn("⚠️ Impossible de persister l'historique retrain: {}", ex.getMessage());
+        }
+    }
 
     // ─────────────────────────────────────────────
     // FALLBACK simulé (si service Python indisponible)
@@ -231,7 +269,7 @@ public class AIRetrainService {
         result.put("injuryAccuracy",   "N/A (service IA hors ligne)");
         result.put("message",
                 "Service IA indisponible. Les données ont été préparées (" +
-                feedbackCount + " feedbacks). Relancez quand le service est actif.");
+                        feedbackCount + " feedbacks). Relancez quand le service est actif.");
 
         // Enregistrer l'événement simulé
         recordRetrainEvent(feedbackCount, true, result);

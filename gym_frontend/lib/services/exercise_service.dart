@@ -5,18 +5,20 @@ import 'auth_service.dart';
 
 class ExerciseService {
   // ── GET exercices par muscle ──
-  // FIX : utiliser Uri.encodeComponent pour gérer les accents français
+  // FIX : utiliser Uri.replace() et Uri.encodeComponent pour gérer les accents français
   // (Épaules, Abdominaux, Ischio-jambiers, etc.)
   static Future<List<dynamic>> getExercisesByMuscle(String muscleName) async {
     try {
       final token = await AuthService.getToken();
 
-      // Encoder correctement le nom du muscle (accents, tirets, espaces)
-      final encodedMuscle = Uri.encodeComponent(muscleName);
+      // ✅ Solution simple et correcte avec Uri.replace()
+      final uri = Uri.parse(
+        ApiConfig.baseUrl,
+      ).replace(path: '/exercises/muscle/${Uri.encodeComponent(muscleName)}');
 
       final response = await http
           .get(
-            Uri.parse('${ApiConfig.baseUrl}/exercises/muscle/$encodedMuscle'),
+            uri,
             headers: {
               'Content-Type': 'application/json',
               'Authorization': 'Bearer $token',

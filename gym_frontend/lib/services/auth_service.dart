@@ -3,6 +3,7 @@ import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 import '../config/api_config.dart';
 import 'logger_service.dart';
+import 'cache_service.dart';
 
 class AuthService {
   static Future<SharedPreferences> _getPrefs() async {
@@ -123,22 +124,28 @@ class AuthService {
   // ── LOGOUT ──
   static Future<void> logout() async {
     AppLogger.i('Déconnexion de l\'utilisateur');
+    await CacheService().clearAll();
     final prefs = await _getPrefs();
     await prefs.clear();
-    AppLogger.i('Session effacée');
+    AppLogger.i('Session et cache effacés');
   }
 
   // ── GETTERS ──
   static Future<bool> isLoggedIn() async =>
       (await _getPrefs()).getString('token') != null;
+
   static Future<String?> getToken() async =>
       (await _getPrefs()).getString('token');
+
   static Future<String?> getRole() async =>
       (await _getPrefs()).getString('role');
+
   static Future<int> getMemberId() async =>
       (await _getPrefs()).getInt('memberId') ?? 0;
+
   static Future<int> getCoachId() async =>
       (await _getPrefs()).getInt('coachId') ?? 0;
+
   static Future<String?> getUsername() async =>
       (await _getPrefs()).getString('username');
 }

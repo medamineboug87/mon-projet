@@ -117,8 +117,10 @@ class _SubscriptionScreenState extends ConsumerState<SubscriptionScreen> {
     final sub = subscriptionData?['subscription'] as Map<String, dynamic>?;
     final status = subscriptionData?['status'] ?? 'ACTIF';
     final daysRemaining = subscriptionData?['daysRemaining'] ?? 0;
-    final isExpiring = subscriptionData?['isExpiring'] ?? false;
-    final isExpired = subscriptionData?['isExpired'] ?? false;
+    final bool isExpired =
+        status == 'EXPIRED' || subscriptionData?['isExpired'] == true;
+    final bool isExpiring =
+        status == 'EXPIRING_SOON' || subscriptionData?['isExpiring'] == true;
     final bool isLocked = !isExpired;
 
     // FIX #17 : extraction sécurisée du type et du prix

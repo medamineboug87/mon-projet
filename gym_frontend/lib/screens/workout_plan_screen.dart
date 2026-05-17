@@ -324,7 +324,6 @@ class _WorkoutPlanScreenState extends ConsumerState<WorkoutPlanScreen> {
               ),
             ),
             const SizedBox(height: 12),
-            // ✅ Correction: Suppression du TweenAnimationBuilder inutile
             _buildWeeklySchedule(plan['schedule']),
             const SizedBox(height: 16),
             Text(

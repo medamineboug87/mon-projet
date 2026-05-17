@@ -258,19 +258,11 @@ public class SessionExerciseController {
         List<SessionExercise> exercises =
                 exerciseRepository.findBySessionIdOrderByExerciseOrderAsc(session.getId());
 
-        // Poids max utilisé dans la séance (indicateur principal)
         double maxWeight = exercises.stream()
                 .mapToDouble(e -> e.getWeightKg() != null ? e.getWeightKg() : 0.0)
                 .max()
                 .orElse(0.0);
 
-        // Volume total de la séance (somme de tous les volumes d'exercices)
-        double totalVolume = exercises.stream()
-                .mapToDouble(e -> e.getTotalVolume() != null ? e.getTotalVolume() : 0.0)
-                .sum();
-
-        // Mise à jour : weightLifted = charge max (rétrocompatibilité)
-        // et on stocke le volume total dans un champ existant
         session.setWeightLifted(maxWeight > 0 ? maxWeight : session.getWeightLifted());
         sessionRepository.save(session);
     }

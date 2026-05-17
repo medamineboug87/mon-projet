@@ -195,7 +195,10 @@ class MemberService {
       AppLogger.d("❌ [DEBUG] Status code non 200: ${response.statusCode}");
       return null;
     } catch (e) {
-      AppLogger.d("❌ [DEBUG] Erreur getAIPrediction: $e");
+      AppLogger.e(
+        '❌ getAIPrediction memberId=$memberId sessionId=$sessionId',
+        e,
+      );
       return _cache.getCachedPrediction(
         memberId,
         sessionId,

@@ -52,4 +52,7 @@ public interface AIFeedbackRepository extends JpaRepository<AIFeedback, Long> {
 
     @Query("SELECT f FROM AIFeedback f WHERE f.fatiguePredictionCorrect = false OR f.injuryPredictionCorrect = false ORDER BY f.createdAt DESC")
     List<AIFeedback> findAllWithCorrections();
+
+    @Query("SELECT AVG(f.coachRating) FROM AIFeedback f WHERE f.coachRating IS NOT NULL")
+    Double findAverageRating();
 }

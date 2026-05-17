@@ -87,12 +87,9 @@ public class TrainingSessionService {
 
         if (!lastWeek.isEmpty()) return lastWeek;
 
-        // Fallback : dernière séance disponible
-        return all.stream()
-                .filter(s -> s.getDate() != null)
-                .sorted((a, b) -> b.getDate().compareTo(a.getDate()))
-                .limit(1)
-                .toList();
+        // Fallback modifié : retourne une liste vide
+        return List.of();
+
     }
 
     // ── Supprimer une séance ──

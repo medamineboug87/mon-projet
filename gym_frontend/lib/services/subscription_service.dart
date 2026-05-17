@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'package:http/http.dart' as http;
 import '../config/api_config.dart';
 import 'auth_service.dart';
+import 'package:flutter/foundation.dart';
 
 class SubscriptionService {
   // Récupérer abonnement actif
@@ -48,7 +49,7 @@ class SubscriptionService {
       }
       return [];
     } catch (e) {
-      print('Erreur dans getMemberSubscriptions: $e');
+      debugPrint('Erreur dans getMemberSubscriptions: $e');
       return [];
     }
   }

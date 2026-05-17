@@ -87,9 +87,8 @@ public class MuscleRecoveryService {
         // Récupérer toutes les séances des 14 derniers jours
         LocalDate twoWeeksAgo = LocalDate.now().minusDays(14);
         List<TrainingSession> sessions = sessionRepository
-                .findByMemberId(memberId).stream()
-                .filter(s -> s.getDate() != null
-                        && !s.getDate().isBefore(twoWeeksAgo))
+                .findByMemberIdSince(memberId, twoWeeksAgo)
+                .stream()
                 .sorted((a, b) -> b.getDate().compareTo(a.getDate()))
                 .collect(Collectors.toList());
 

@@ -65,6 +65,6 @@ public interface MessageRepository extends JpaRepository<Message, Long> {
     List<Message> findAdminConversationWithUser(Long userId);
 
     // ── Historique broadcasts ──
-    @Query("SELECT m FROM Message m WHERE m.content LIKE '[📢 Annonce]%' ORDER BY m.sentAt DESC")
+    @Query("SELECT m FROM Message m WHERE m.member IS NULL AND m.sender.role = com.example.project_backend.Entity.Role.ADMIN ORDER BY m.sentAt DESC")
     List<Message> findBroadcastMessages();
 }

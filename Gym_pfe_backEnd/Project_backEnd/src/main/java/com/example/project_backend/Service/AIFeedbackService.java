@@ -231,13 +231,9 @@ public class AIFeedbackService {
                 "accuracyValue", injuryAccuracy
         ));
 
-        List<AIFeedback> allFeedbacks = feedbackRepository.findAll();
-        OptionalDouble avgRating = allFeedbacks.stream()
-                .filter(f -> f.getCoachRating() != null)
-                .mapToInt(AIFeedback::getCoachRating)
-                .average();
-        stats.put("averageRating", avgRating.isPresent()
-                ? Math.round(avgRating.getAsDouble() * 10.0) / 10.0 : null);
+        Double avgRating = feedbackRepository.findAverageRating();
+        stats.put("averageRating", avgRating != null
+                ? Math.round(avgRating * 10.0) / 10.0 : null);
 
         long pendingRetraining = feedbackRepository.findByUsedForRetrainingFalse().size();
         stats.put("pendingRetrainingFeedbacks", pendingRetraining);

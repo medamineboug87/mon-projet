@@ -613,11 +613,9 @@ public class AIService {
     }
 
     private double calculateACLRiskScore(Member member, List<TrainingSession> sessions) {
-        double baseRisk = member.getAge() > 35 ? 0.3 : 0.1;
-        long highRiskSessions = sessions.stream()
-                .filter(s -> s.getPainLevel() != null && s.getPainLevel() > 3)
-                .count();
-        return Math.min(1.0, baseRisk + (highRiskSessions * 0.05));
+        double injuryOccurred = sessions.stream()
+                .anyMatch(s -> s.getPainLevel() != null && s.getPainLevel() > 6) ? 1.0 : 0.0;
+        return Math.min(1.0, (injuryOccurred * 0.5) + (member.getAge() / 100.0));
     }
 
     private double calculateLoadBalanceScore(List<TrainingSession> sessions) {
@@ -833,9 +831,7 @@ public class AIService {
     private int parseReps(String repsCompleted) {
         if (repsCompleted == null || repsCompleted.isBlank()) return 10;
         try {
-            if (repsCompleted.contains("-"))
-                return Integer.parseInt(repsCompleted.split("-")[1]);
-            return Integer.parseInt(repsCompleted);
+            return Integer.parseInt(repsCompleted.split("[-,]")[0].trim());
         } catch (NumberFormatException e) {
             return 10;
         }

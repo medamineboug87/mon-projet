@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'dart:async';
 import 'package:url_launcher/url_launcher.dart';
 import '../services/exercise_service.dart';
 
@@ -52,10 +53,20 @@ class _ExerciseScreenState extends State<ExerciseScreen> {
   bool _isLoading = true;
   int _activeExerciseIndex = 0;
 
+  // ✅ FIX #30 : Timer récursif remplacé par Timer.periodic
+  Timer? _animTimer;
+
   @override
   void initState() {
     super.initState();
     _loadExercises();
+  }
+
+  @override
+  void dispose() {
+    // ✅ FIX #30 : Annuler le timer à la destruction du widget
+    _animTimer?.cancel();
+    super.dispose();
   }
 
   Future<void> _loadExercises() async {
@@ -86,13 +97,17 @@ class _ExerciseScreenState extends State<ExerciseScreen> {
     }
   }
 
+  // ✅ FIX #30 : Timer.periodic au lieu de l'appel récursif
   void _startAnimationLoop() {
-    Future.delayed(const Duration(seconds: 3), () {
-      if (!mounted || _exercises.isEmpty) return;
+    _animTimer?.cancel();
+    _animTimer = Timer.periodic(const Duration(seconds: 3), (_) {
+      if (!mounted || _exercises.isEmpty) {
+        _animTimer?.cancel();
+        return;
+      }
       setState(() {
         _activeExerciseIndex = (_activeExerciseIndex + 1) % _exercises.length;
       });
-      if (mounted) _startAnimationLoop();
     });
   }
 
@@ -156,7 +171,9 @@ class _ExerciseScreenState extends State<ExerciseScreen> {
                         decoration: BoxDecoration(
                           color: const Color(0xFFFFEBEE),
                           borderRadius: BorderRadius.circular(14),
-                          border: Border.all(color: _kRed.withValues(alpha: 0.4)),
+                          border: Border.all(
+                            color: _kRed.withValues(alpha: 0.4),
+                          ),
                         ),
                         child: Row(
                           children: const [

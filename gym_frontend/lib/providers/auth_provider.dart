@@ -1,5 +1,6 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../services/auth_service.dart';
+import '../providers/coach_provider.dart'; // ✅ allMembersProvider & allMembersPredictionsProvider
 
 // Provider pour le token
 final tokenProvider = StateProvider<String?>((ref) => null);
@@ -38,24 +39,29 @@ final loginProvider =
       return await AuthService.login(input.identifier, input.password);
     });
 
-// ✅ FIX #12 : logoutProvider correctement implémenté
-// Appelé via ref.read(logoutProvider.notifier).logout()
-class LogoutNotifier extends AsyncNotifier<void> {
+// ✅ FIX #12 & #21 : LogoutNotifier avec type correct
+class LogoutNotifier extends AsyncNotifier<dynamic> {
   @override
-  Future<void> build() async {}
+  Future<dynamic> build() async => null;
 
   Future<void> logout() async {
     await AuthService.logout();
-    // Invalider tous les providers d'état
+
+    // Invalider tous les providers d'authentification
     ref.invalidate(isLoggedInProvider);
     ref.invalidate(roleProvider);
     ref.invalidate(memberIdProvider);
     ref.invalidate(coachIdProvider);
     ref.invalidate(usernameProvider);
     ref.invalidate(tokenProvider);
+
+    // Invalider les données métier
+    ref.invalidate(allMembersProvider);
+    ref.invalidate(allMembersPredictionsProvider);
   }
 }
 
-final logoutProvider = AsyncNotifierProvider<LogoutNotifier, void>(
+// ✅ Correction du type : dynamic au lieu de void
+final logoutProvider = AsyncNotifierProvider<LogoutNotifier, dynamic>(
   LogoutNotifier.new,
 );

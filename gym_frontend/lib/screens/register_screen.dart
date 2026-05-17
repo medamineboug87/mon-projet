@@ -216,7 +216,8 @@ class _RegisterScreenState extends State<RegisterScreen> {
               'weight': double.parse(_weightController.text),
               'height': double.parse(_heightController.text),
               'email': _emailController.text.trim(),
-              'phone': '+216${_phoneController.text.trim()}',
+              'phone':
+                  '+216${_phoneController.text.trim().replaceFirst(RegExp(r'^\+?216'), '')}',
               'username': _usernameController.text.trim(),
               'password': _passwordController.text,
               'subscriptionType': _selectedPlan,

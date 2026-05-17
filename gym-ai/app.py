@@ -10,6 +10,7 @@ Changements vs v4.0 :
   - FIX 5.3 : multipliers.yml déjà chargé — Java doit aussi lire ce fichier
               (voir commentaire SYNC_WARNING)
   - FIX 3.3 : ACL_Risk_Score — différence train.py vs Java documentée
+  - FIX 7.1 : Vérification compatibilité modèles pkl au démarrage
 """
 
 from fastapi import FastAPI, HTTPException, BackgroundTasks
@@ -111,6 +112,42 @@ except Exception as e:
     injury_scaler = None
     INJURY_SCALER_MISSING = True
     logger.warning(f"⚠️ Scaler blessure non trouvé: {e}")
+
+# ══════════════════════════════════════════════════════════════
+# FIX #31 : VÉRIFICATION DE COMPATIBILITÉ DES MODÈLES PKL
+# ══════════════════════════════════════════════════════════════
+
+try:
+    fatigue_features_loaded = joblib.load("model/fatigue_features.pkl")
+    if "TotalDuration" not in fatigue_features_loaded:
+        logger.warning("⚠️ Modèle fatigue entraîné SANS TotalDuration — relancez train.py")
+        fatigue_model = None  # forcer le fallback heuristique Java
+    else:
+        logger.info("✅ Modèle fatigue compatible (TotalDuration présent)")
+except FileNotFoundError:
+    logger.warning("⚠️ fatigue_features.pkl non trouvé — impossible de vérifier la compatibilité")
+except Exception as e:
+    logger.warning(f"⚠️ Erreur vérification compatibilité modèle fatigue: {e}")
+
+try:
+    injury_features_loaded = joblib.load("model/injury_features.pkl")
+    expected_injury_features = [
+        "Age", "Training_Intensity", "Training_Hours_Per_Week", "Recovery_Days_Per_Week",
+        "Fatigue_Score", "Load_Balance_Score", "ACL_Risk_Score", "WeightLiftedNorm",
+        "HasCardio", "CardioDuration", "CardioIntensity", "MuscleRiskScore",
+        "SessionsPerWeek", "Gender", "BMI"
+    ]
+    missing_features = [f for f in expected_injury_features if f not in injury_features_loaded]
+    if missing_features:
+        logger.warning(f"⚠️ Modèle blessure manque des features: {missing_features} — relancez train.py")
+        injury_model = None
+        INJURY_SCALER_MISSING = True
+    else:
+        logger.info("✅ Modèle blessure compatible")
+except FileNotFoundError:
+    logger.warning("⚠️ injury_features.pkl non trouvé — impossible de vérifier la compatibilité")
+except Exception as e:
+    logger.warning(f"⚠️ Erreur vérification compatibilité modèle blessure: {e}")
 
 # ══════════════════════════════════════════════════════════════
 # FEATURES DES MODÈLES ML

@@ -113,11 +113,10 @@ public class SubscriptionService {
     public String getSubscriptionStatus(Long subscriptionId) {
         Subscription sub = subscriptionRepository.findById(subscriptionId)
                 .orElseThrow(() -> new RuntimeException("Subscription not found"));
-
-        if (sub.getEndDate() == null) return "ACTIF";
-        if (sub.isExpired())          return "EXPIRÉ";
-        if (sub.isExpiringSoon())     return "EXPIRE BIENTÔT";
-        return "ACTIF";
+        if (sub.getEndDate() == null) return "ACTIVE";
+        if (sub.isExpired())          return "EXPIRED";
+        if (sub.isExpiringSoon())     return "EXPIRING_SOON";
+        return "ACTIVE";
     }
 
     // ── Jours restants ──
