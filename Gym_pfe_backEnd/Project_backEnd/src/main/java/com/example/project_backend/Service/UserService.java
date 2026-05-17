@@ -28,9 +28,20 @@ public class UserService implements UserDetailsService {
         this.passwordEncoder = passwordEncoder;
         this.memberRepository = memberRepository;
     }
+    private void validatePassword(String password) {
+        if (password == null || password.length() < 8) {
+            throw new RuntimeException("Le mot de passe doit contenir au moins 8 caractères");
+        }
+        boolean hasUpper = password.chars().anyMatch(Character::isUpperCase);
+        boolean hasDigit = password.chars().anyMatch(Character::isDigit);
+        if (!hasUpper || !hasDigit) {
+            throw new RuntimeException("Le mot de passe doit contenir au moins une majuscule et un chiffre");
+        }
+    }
 
     // REGISTER
     public User register(User user, Long memberId) {
+        validatePassword(user.getPassword());
         if (userRepository.existsByUsername(user.getUsername())) {
             throw new RuntimeException("Username déjà utilisé");
         }

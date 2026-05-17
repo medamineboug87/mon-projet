@@ -4,11 +4,14 @@ import com.example.project_backend.Entity.Member;
 import com.example.project_backend.Entity.Subscription;
 import com.example.project_backend.Repository.MemberRepository;
 import com.example.project_backend.Repository.SubscriptionRepository;
+import jakarta.transaction.Transactional;
+import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.temporal.ChronoUnit;
+import java.util.Comparator;
 import java.util.List;
 
 @Service
@@ -75,7 +78,9 @@ public class SubscriptionService {
         // FIX : ignorer les abonnements réellement expirés
         return subscriptions.stream()
                 .filter(s -> s.getEndDate() == null || !s.isExpired())
-                .reduce((first, second) -> second) // prendre le plus récent
+                .max(Comparator.comparing(
+                        s -> s.getStartDate() != null ? s.getStartDate() : LocalDate.MIN
+                ))
                 .orElse(null);
     }
 
@@ -136,5 +141,18 @@ public class SubscriptionService {
 
     public List<Subscription> getSubscriptionsByStatus(String status) {
         return subscriptionRepository.findByStatus(status);
+    }
+    // Dans SubscriptionService.java
+    @Scheduled(cron = "0 0 1 * * *") // chaque nuit à 1h
+    @Transactional
+    public void expireOutdatedSubscriptions() {
+        List<Subscription> active = subscriptionRepository.findByStatus("ACTIVE");
+        active.stream()
+                .filter(s -> s.getEndDate() != null && s.isExpired())
+                .forEach(s -> {
+                    s.setStatus("EXPIRED");
+                    s.setUpdatedAt(LocalDateTime.now());
+                    subscriptionRepository.save(s);
+                });
     }
 }

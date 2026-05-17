@@ -69,35 +69,27 @@ public class MemberService {
             throw new RuntimeException("Member not found");
         }
 
-        // 1. Supprimer les messages liés au membre (FK message.member_id)
+        // 1. Messages liés au membre
         messageRepository.deleteByMemberId(id);
 
-        // 2. Trouver le User lié et dissocier + supprimer ses messages admin
-        userRepository.findAll().stream()
-                .filter(u -> u.getMember() != null && u.getMember().getId().equals(id))
-                .findFirst()
-                .ifPresent(user -> {
-                    messageRepository.deleteBySenderId(user.getId());
-                    messageRepository.deleteByReceiverId(user.getId());
-                    user.setMember(null);
-                    userRepository.save(user);
-                    userRepository.delete(user);
-                });
+        // 2. Requête ciblée — remplace le findAll().stream().filter()
+        userRepository.findByMemberId(id).ifPresent(user -> {
+            messageRepository.deleteBySenderId(user.getId());
+            messageRepository.deleteByReceiverId(user.getId());
+            user.setMember(null);
+            userRepository.save(user);
+            userRepository.delete(user);
+        });
 
-        // 3. Supprimer les séances
-        trainingSessionRepository.deleteAll(
-                trainingSessionRepository.findByMemberId(id));
+        // 3. Séances, abonnements, profil IA
+        trainingSessionRepository.deleteAll(trainingSessionRepository.findByMemberId(id));
+        subscriptionRepository.deleteAll(subscriptionRepository.findByMemberId(id));
 
-        // 4. Supprimer les abonnements
-        subscriptionRepository.deleteAll(
-                subscriptionRepository.findByMemberId(id));
-
-        // 5. ← NOUVEAU : Supprimer le profil IA si il existe
         if (memberProfileRepository.existsByMemberId(id)) {
             memberProfileRepository.deleteByMemberId(id);
         }
 
-        // 6. Supprimer le membre
+        // 4. Membre
         memberRepository.deleteById(id);
     }
 

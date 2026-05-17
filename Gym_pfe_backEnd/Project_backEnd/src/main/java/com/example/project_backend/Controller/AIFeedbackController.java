@@ -2,12 +2,14 @@ package com.example.project_backend.Controller;
 
 import com.example.project_backend.Entity.AIFeedback;
 import com.example.project_backend.Entity.Coach;
+import com.example.project_backend.Entity.User;
 import com.example.project_backend.Repository.CoachRepository;
 import com.example.project_backend.Repository.UserRepository;
 import com.example.project_backend.Service.AIFeedbackService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.web.bind.annotation.*;
 
@@ -64,7 +66,8 @@ public class AIFeedbackController {
     // POST - Soumettre un feedback sans session (feedback général)
     // ═══════════════════════════════════════════════════════════════
 
-    @PostMapping("/member/{memberId}")
+    @PostMapping("/member/{memberId}/session/{sessionId}")
+    @PreAuthorize("hasAnyRole('COACH', 'ADMIN')")
     public ResponseEntity<?> submitFeedbackNoSession(
             @PathVariable Long memberId,
             @RequestBody Map<String, Object> data) {
@@ -184,15 +187,13 @@ public class AIFeedbackController {
         String username = SecurityContextHolder.getContext()
                 .getAuthentication().getName();
 
-        return userRepository.findByUsername(username)
-                .map(user -> {
-                    if (user.getCoach() != null) return user.getCoach().getId();
-                    // Fallback : prendre le premier coach disponible (pour les tests admin)
-                    return coachRepository.findAll().stream()
-                            .findFirst()
-                            .map(Coach::getId)
-                            .orElseThrow(() -> new RuntimeException("Aucun coach trouvé"));
-                })
+        User user = userRepository.findByUsername(username)
                 .orElseThrow(() -> new RuntimeException("User not found: " + username));
+
+        // Suppression du fallback dangereux — seul un vrai coach peut soumettre
+        if (user.getCoach() == null) {
+            throw new RuntimeException("Accès réservé aux coachs");
+        }
+        return user.getCoach().getId();
     }
 }

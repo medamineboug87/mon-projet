@@ -62,8 +62,8 @@ public class SessionExercise {
     private Double totalVolume = 0.0;
 
     // ════════════════════════════════════════════════════
-    // GETTERS & SETTERS
-    // ════════════════════════════════════════════════════
+// GETTERS & SETTERS
+// ════════════════════════════════════════════════════
 
     public Long getId() { return id; }
     public void setId(Long id) { this.id = id; }
@@ -80,17 +80,20 @@ public class SessionExercise {
     public Double getWeightKg() { return weightKg; }
     public void setWeightKg(Double weightKg) {
         this.weightKg = weightKg;
-        recalculateTotalVolume();
+        // Plus d'appel ici - recalcul différé
     }
 
     public Integer getSetsCompleted() { return setsCompleted; }
     public void setSetsCompleted(Integer setsCompleted) {
         this.setsCompleted = setsCompleted;
-        recalculateTotalVolume();
+        // Plus d'appel ici - recalcul différé
     }
 
     public String getRepsCompleted() { return repsCompleted; }
-    public void setRepsCompleted(String repsCompleted) { this.repsCompleted = repsCompleted; }
+    public void setRepsCompleted(String repsCompleted) {
+        this.repsCompleted = repsCompleted;
+        recalculateTotalVolume(); // Déclenchement uniquement quand reps est modifié
+    }
 
     public Boolean getFailureReached() { return failureReached; }
     public void setFailureReached(Boolean failureReached) { this.failureReached = failureReached; }
@@ -110,14 +113,18 @@ public class SessionExercise {
     public Double getTotalVolume() { return totalVolume; }
     public void setTotalVolume(Double totalVolume) { this.totalVolume = totalVolume; }
 
-    // ── Calcul automatique du volume total ──
-    // Volume = Poids × Séries × Répétitions moyennes
+    // ── Recalcul automatique du volume total ──
+// Volume = Poids × Séries × Répétitions moyennes
     private void recalculateTotalVolume() {
-        if (weightKg != null && setsCompleted != null && setsCompleted > 0) {
-            // Extraire la première valeur de reps (ex: "10-12" → 10, "10" → 10)
+        if (weightKg != null && setsCompleted != null && repsCompleted != null) {
             int repsValue = parseReps(repsCompleted);
             this.totalVolume = weightKg * setsCompleted * repsValue;
         }
+    }
+
+    // ── Méthode utilitaire pour forcer le recalcul (utile après chargement depuis DB) ──
+    public void refreshTotalVolume() {
+        recalculateTotalVolume();
     }
 
     // ── Helper : extrait un nombre entier depuis une string de reps ──
@@ -130,5 +137,4 @@ public class SessionExercise {
         } catch (NumberFormatException e) {
             return 10; // valeur par défaut
         }
-    }
-}
+    }}

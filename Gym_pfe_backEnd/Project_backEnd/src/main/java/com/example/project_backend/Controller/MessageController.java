@@ -79,23 +79,33 @@ public class MessageController {
     // ── Compteur global (toutes sources) ──
     @GetMapping("/unread/{username}")
     public ResponseEntity<Map<String, Object>> countUnread(
-            @PathVariable String username) {
+            @PathVariable String username,
+            Authentication authentication) {
+        if (!authentication.getName().equals(username)) {
+            return ResponseEntity.status(403).body(Map.of("error", "Accès refusé"));
+        }
         long count = messageService.countUnreadMessages(username);
         return ResponseEntity.ok(Map.of("unreadCount", count));
     }
 
-    // ── Compteur messages non lus du COACH uniquement ──
     @GetMapping("/unread/coach/{username}")
     public ResponseEntity<Map<String, Object>> countUnreadFromCoach(
-            @PathVariable String username) {
+            @PathVariable String username,
+            Authentication authentication) {
+        if (!authentication.getName().equals(username)) {
+            return ResponseEntity.status(403).body(Map.of("error", "Accès refusé"));
+        }
         long count = messageService.countUnreadFromCoach(username);
         return ResponseEntity.ok(Map.of("unreadCount", count));
     }
 
-    // ── Compteur messages non lus de l'ADMIN uniquement ──
     @GetMapping("/unread/admin/{username}")
     public ResponseEntity<Map<String, Object>> countUnreadFromAdmin(
-            @PathVariable String username) {
+            @PathVariable String username,
+            Authentication authentication) {
+        if (!authentication.getName().equals(username)) {
+            return ResponseEntity.status(403).body(Map.of("error", "Accès refusé"));
+        }
         long count = messageService.countUnreadFromAdmin(username);
         return ResponseEntity.ok(Map.of("unreadCount", count));
     }
